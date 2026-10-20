@@ -22,10 +22,9 @@ export function App() {
   });
   const [phase, setPhase] = useState<'loading' | 'revealing' | 'done'>('loading');
 
+  // Starts a round afresh. The furthest round reached is kept, even by New campaign.
   const startRound = (round: number) => {
-    const r = clampRound(round);
-    saveProgress({ round: r });
-    setRun({ round: r, run: Date.now() });
+    setRun({ ...saveProgress({ round: clampRound(round) }), run: Date.now() });
   };
 
   return (
