@@ -266,6 +266,7 @@ kbd {
   font-size: 18px;
   color: var(--k7);
   min-width: 60px;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat svg {
@@ -290,6 +291,46 @@ kbd {
 .stat.round small {
   margin-left: 2px;
   text-transform: uppercase;
+}
+
+/* Wide screens keep the HUD on one line: the map name gives way before anything wraps. */
+@media (min-width: 901px) {
+  .hud {
+    flex-wrap: nowrap;
+  }
+
+  .hud-stats {
+    flex-wrap: nowrap;
+    min-width: 0;
+    gap: clamp(12px, 1.4vw, 20px);
+  }
+
+  .hud-actions {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+
+  .stat {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  /* Silkscreen has no tabular digits, so room for five keeps the neighbours still as gold ticks. */
+  .stat.num {
+    min-width: calc(26px + 5ch);
+  }
+
+  .stat.round {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .stat.round small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .stat.danger {
@@ -492,6 +533,34 @@ kbd {
 .insp-actions .btn {
   flex: 1;
   justify-content: center;
+}
+
+.btn .hotkey {
+  margin-left: 2px;
+  box-shadow: none;
+}
+
+.btn-primary .hotkey {
+  background: var(--r0);
+}
+
+.btn:disabled .hotkey {
+  color: var(--k4);
+  background: var(--k1);
+}
+
+/* No keyboard to speak of on a touch screen. */
+@media (hover: none) and (pointer: coarse) {
+  .btn .hotkey {
+    display: none;
+  }
+}
+
+/* On short screens the tip makes way for the wave preview once play is under way. */
+@media (max-height: 820px) {
+  .tip.is-old {
+    display: none;
+  }
 }
 
 .preview {
