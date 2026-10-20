@@ -60,6 +60,7 @@ export interface Enemy {
   burnSrc?: Tower;
   stunT: number;
   kb: number; // knockback still to apply, in pixels
+  kbGuard: number; // distance to walk past before Quake can knock back or stun again
   abilT: number; // countdown to the next heal, blink or jam pulse
 }
 
@@ -77,6 +78,8 @@ export type GameStatus = 'playing' | 'won' | 'lost';
 export interface Banner { id: number; text: string; sub?: string; danger?: boolean }
 
 let uid = 0;
+// Ground a foe must gain past its last Quake hit before the next slam can push it back again.
+const KNOCK_MARGIN = 8;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -292,7 +295,8 @@ export class Game {
     this.rt += dt;
     if (!this.paused && this.status === 'playing') {
       this.acc += dt * this.speed;
-      while (this.acc >= STEP) {
+      // Stop as soon as the game ends, so later steps in the same frame cannot rewrite the result.
+      while (this.acc >= STEP && this.status === 'playing') {
         this.update(STEP);
         this.acc -= STEP;
       }
@@ -433,6 +437,14 @@ export class Game {
     const t = this.selected;
     if (!t || !TOWERS[t.type].aims) return;
     t.mode = mode;
+    if (t.type === 'lancer') {
+      // Re-aim under the new mode; keep the heat if it settles on the same foe.
+      const next = this.pickTarget(t, this.level(t).range);
+      if ((next?.id ?? 0) !== t.lockId) {
+        t.lockId = next?.id ?? 0;
+        t.charge = 0;
+      }
+    }
     sfx.play('click');
     this.checkpoint();
     this.touch();
@@ -632,13 +644,14 @@ export class Game {
       speed: def.speed * rand(0.95, 1.05), armor: def.armor, gold: killGold(def.gold, this.wave),
       dmg: def.dmg, slow: 0, slowT: 0, flash: 0, anim: Math.random() * 2, face: 1,
       off: isBoss(type) ? 0 : rand(-2.5, 2.5), alive: true, w: spr.w, h: spr.h,
-      burn: 0, burnT: 0, stunT: 0, kb: 0, abilT: rand(1, 2.5),
+      burn: 0, burnT: 0, stunT: 0, kb: 0, kbGuard: 0, abilT: rand(1, 2.5),
     };
     this.placeEnemy(e);
     this.enemies.push(e);
   }
 
   private update(dt: number) {
+    if (this.status !== 'playing') return;
     // spawning
     if (this.waveActive) {
       this.waveT += dt;
@@ -684,6 +697,7 @@ export class Game {
       e.flash = Math.max(0, e.flash - dt);
       if (e.dist >= this.totalLen) {
         this.leak(e);
+        if (this.status !== 'playing') return;
         continue;
       }
       this.placeEnemy(e);
@@ -854,6 +868,12 @@ export class Game {
     return best;
   }
 
+  private heldTarget(t: Tower, range: number): Enemy | null {
+    if (!t.lockId) return null;
+    const e = this.enemies.find((o) => o.id === t.lockId);
+    return e && e.alive && e.x >= 0 && this.inRange(t, e, range) ? e : null;
+  }
+
   private updateTower(t: Tower, dt: number) {
     const L = this.level(t);
     const buff = this.buffOf(t);
@@ -905,7 +925,8 @@ export class Game {
       return;
     }
 
-    const target = this.pickTarget(t, L.range);
+    // The Lancer holds its lock while the target lives and stays in range, so its heat can build.
+    const target = (t.type === 'lancer' && this.heldTarget(t, L.range)) || this.pickTarget(t, L.range);
     if (t.type === 'lancer' && (target?.id ?? 0) !== t.lockId) {
       // Switching targets cools the lens back down.
       t.lockId = target?.id ?? 0;
@@ -1064,9 +1085,15 @@ export class Game {
     const hits = this.enemies.filter((e) => e.alive && e.x >= 0 && this.inRange(t, e, L.range));
     if (!hits.length) return;
     for (const e of hits) {
-      const boss = isBoss(e.type);
-      e.kb = Math.max(e.kb, (L.knock ?? 0) * (boss ? 0.25 : 1));
-      if (!boss) e.stunT = Math.max(e.stunT, L.stun ?? 0);
+      // A foe is never knocked back over the same ground twice: until it walks a little past
+      // where the last slam caught it, further slams only hurt. Without this, slow or chilled
+      // foes lose more ground per slam than they gain between slams and are pinned forever.
+      if (e.dist >= e.kbGuard) {
+        const boss = isBoss(e.type);
+        e.kb = Math.max(e.kb, (L.knock ?? 0) * (boss ? 0.25 : 1));
+        if (!boss) e.stunT = Math.max(e.stunT, L.stun ?? 0);
+        e.kbGuard = e.dist + KNOCK_MARGIN;
+      }
       this.hit(e, L.dmg * dmgMul, t);
     }
     this.rings.push({ x: t.x, y: t.y, r0: 5, r1: L.range, life: 0.45, max: 0.45, color: PAL.k7 });
