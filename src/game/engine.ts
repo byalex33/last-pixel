@@ -399,6 +399,13 @@ export class Game {
     this.touch();
   }
 
+  // For overlays that hold the game still, then hand back the pause state it had before.
+  setPaused(paused: boolean) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.touch();
+  }
+
   cycleSpeed() {
     this.speed = this.speed >= 3 ? 1 : this.speed + 1;
     this.checkpoint();
@@ -547,7 +554,8 @@ export class Game {
       this.touch();
       return;
     }
-    if (this.status !== 'playing') return;
+    // Middle and other buttons do nothing; only the primary button builds or selects.
+    if (e.button !== 0 || this.status !== 'playing') return;
     // On touch, first tap previews the placement and the second tap confirms it.
     const same = this.hover && this.hover.tx === tile.tx && this.hover.ty === tile.ty;
     this.hover = tile;
@@ -571,7 +579,11 @@ export class Game {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
+    // Leave browser shortcuts (Ctrl+S, Ctrl+F, Ctrl+0...) alone, and don't flicker build mode on key repeat.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const k = e.key.toLowerCase();
+    // Behind the Pause menu only the pause and escape keys still work.
+    if (this.paused && k !== 'p' && k !== 'escape') return;
     const idx = TOWER_KEYS.indexOf(k);
     if (idx >= 0 && idx < TOWER_ORDER.length) {
       this.toggleBuild(TOWER_ORDER[idx]);

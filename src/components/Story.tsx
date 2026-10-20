@@ -96,6 +96,8 @@ export function Story({ round, name, lines, onClose }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       e.stopImmediatePropagation();
+      // Browser shortcuts (Ctrl+R, Cmd+W...) keep working; they just don't skip or close the story.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       sfx.unlock();
       if (!done) {
         e.preventDefault();
