@@ -56,8 +56,13 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     const el = stageRef.current!;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
-      let s = Math.min(r.width / W, r.height / H);
-      if (s >= 1) s = Math.floor(s);
+      const dpr = window.devicePixelRatio || 1;
+      const fit = Math.min(r.width / W, r.height / H);
+      // Snap to whole device pixels so every art pixel is the same size: on a 2x or 3x
+      // screen that gives 1.5x or 1.67x steps instead of falling back to 1x.
+      let s = fit * dpr >= 1 ? Math.floor(fit * dpr) / dpr : fit;
+      // A 1x screen has no even step between 1x and 2x; a slightly uneven 1.5x beats a tiny board.
+      if (s < 1.5 && fit >= 1.5) s = 1.5;
       setScale(Math.max(0.5, s));
     });
     ro.observe(el);
@@ -234,11 +239,15 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           ) : game.placing ? (
             <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
           ) : (
-            <section className="panel px-box">
+            <section className="panel px-box tip">
               <h3>Tip</h3>
-              <p className="hint">
+              <p className="hint for-mouse">
                 Pick a tower, then click an empty tile to build it. Click a tower to upgrade or sell it.
                 Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
+              </p>
+              <p className="hint for-touch">
+                Pick a tower, then tap an empty tile twice to build it. Tap a tower to upgrade or sell it,
+                or tap an enemy to see its stats.
               </p>
             </section>
           )}
@@ -403,7 +412,8 @@ function PlacingInfo({ type, onCancel }: { type: TowerType; onCancel: () => void
           </div>
         ))}
       </dl>
-      <p className="hint">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-mouse">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-touch">Tap an empty tile to preview the tower, then tap it again to build.</p>
     </section>
   );
 }
