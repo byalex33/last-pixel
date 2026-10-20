@@ -235,7 +235,8 @@ export function buildWave(n: number, round = 0): SpawnGroup[] {
   if (round >= 3 && n >= 6) add('mender', 1 + Math.floor((n - 6) / 5), 2.4);
   if (round >= 4 && n >= 4) add('glitch', 2 + Math.floor((n - 4) * 0.5), 0.9);
   if (round >= 4 && n === TOTAL_WAVES) {
-    add('boss', 2, 6);
+    // One Colossus escorts the Eraser. A pair of them broke through even a strong late-game defence.
+    add('boss', 1, 6);
     add('eraser', 1, 1);
   } else if (n % 10 === 0) {
     add('boss', n / 10, 6);
