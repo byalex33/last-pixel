@@ -80,6 +80,8 @@ export interface Banner { id: number; text: string; sub?: string; danger?: boole
 let uid = 0;
 // Ground a foe must gain past its last Quake hit before the next slam can push it back again.
 const KNOCK_MARGIN = 8;
+// Seconds Auto waits before sending the next wave, so there is always time to build.
+const AUTO_DELAY = 2.5;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -198,6 +200,7 @@ export class Game {
     this.endless = s.endless;
     this.speed = s.speed;
     this.autoWave = s.autoWave;
+    this.autoT = AUTO_DELAY;
     for (const o of s.towers) {
       const type = o.type as TowerType;
       if (!TOWERS[type] || !isUnlocked(type, this.round) || !this.canBuild(o.tx, o.ty)) continue;
@@ -395,6 +398,7 @@ export class Game {
   continueEndless() {
     this.endless = true;
     this.status = 'playing';
+    this.autoT = AUTO_DELAY;
     this.showBanner('Endless', 'How long can you hold?', true);
     this.checkpoint();
     this.touch();
@@ -1211,7 +1215,7 @@ export class Game {
     } else {
       this.showBanner('Wave clear', `+${bonus} gold`);
       sfx.play('clear');
-      this.autoT = 2.5;
+      this.autoT = AUTO_DELAY;
       this.checkpoint();
     }
     this.touch();
