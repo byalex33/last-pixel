@@ -246,7 +246,8 @@ export function buildWave(n: number, round = 0): SpawnGroup[] {
 
 export function hpScale(n: number, difficulty: number) {
   const k = Math.max(0, n - 1);
-  const endless = n > TOTAL_WAVES ? Math.pow(1.07, n - TOTAL_WAVES) : 1;
+  // By wave 30 the curve already climbs about 10% a wave, so Endless only adds a gentle 3% on top.
+  const endless = n > TOTAL_WAVES ? Math.pow(1.03, n - TOTAL_WAVES) : 1;
   const late = k > 12 ? 0.08 * (k - 12) ** 2 : 0;
   return (1 + 0.16 * k + 0.012 * k * k + late) * difficulty * endless;
 }
