@@ -379,6 +379,13 @@ export class Game {
     this.touch();
   }
 
+  // For overlays that hold the game still, then hand back the pause state it had before.
+  setPaused(paused: boolean) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.touch();
+  }
+
   cycleSpeed() {
     this.speed = this.speed >= 3 ? 1 : this.speed + 1;
     this.checkpoint();

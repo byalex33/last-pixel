@@ -43,6 +43,18 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     setStory(false);
     if (loadStorySeen() < game.round) saveStorySeen(game.round);
   };
+  // Wait for the loader to clear so the typing is seen and keys still reach the loader.
+  const storyOpen = story && !!chapter && !paused;
+  // HUD actions are off while the story is up.
+  const blocked = storyOpen;
+
+  // The story holds the game still, then hands back whatever pause state it found.
+  useEffect(() => {
+    if (!storyOpen) return;
+    const was = game.paused;
+    game.setPaused(true);
+    return () => game.setPaused(was);
+  }, [game, storyOpen]);
 
   useEffect(() => {
     if (paused) return;
@@ -89,28 +101,33 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           </span>
         </div>
         <div className="hud-actions">
-          <Btn variant="primary" onClick={() => game.sendWave()} disabled={game.waveActive || game.status !== 'playing'}>
+          <Btn variant="primary" onClick={() => game.sendWave()} disabled={blocked || game.waveActive || game.status !== 'playing'}>
             <PiPlayFill />
             {game.waveActive ? `${game.remaining()} left` : game.wave === 0 ? 'Start' : 'Next wave'}
           </Btn>
-          <Btn onClick={() => game.togglePause()} aria-label={game.paused ? 'Resume' : 'Pause'} active={game.paused}>
+          <Btn
+            onClick={() => game.togglePause()}
+            aria-label={game.paused ? 'Resume' : 'Pause'}
+            active={game.paused && !blocked}
+            disabled={blocked}
+          >
             {game.paused ? <PiPlayFill /> : <PiPauseFill />}
           </Btn>
-          <Btn onClick={() => game.cycleSpeed()} aria-label="Game speed" active={game.speed > 1}>
+          <Btn onClick={() => game.cycleSpeed()} aria-label="Game speed" active={game.speed > 1} disabled={blocked}>
             <PiFastForwardFill /> {game.speed}x
           </Btn>
-          <Btn onClick={() => game.toggleAuto()} active={game.autoWave} title="Automatically send waves">
+          <Btn onClick={() => game.toggleAuto()} active={game.autoWave} title="Automatically send waves" disabled={blocked}>
             <PiRepeatBold /> Auto
           </Btn>
           {chapter && (
-            <Btn onClick={() => setStory(true)} aria-label="Story" title="Story">
+            <Btn onClick={() => setStory(true)} aria-label="Story" title="Story" disabled={blocked}>
               <PiBookOpenTextFill />
             </Btn>
           )}
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
-          <Btn onClick={onRestart} aria-label="Restart round" title="Restart round">
+          <Btn onClick={onRestart} aria-label="Restart round" title="Restart round" disabled={blocked}>
             <PiArrowCounterClockwiseBold />
           </Btn>
         </div>
@@ -129,12 +146,11 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               </div>
             )}
 
-            {/* Wait for the loader to clear so the typing is seen and keys still reach the loader. */}
-            {story && chapter && !paused && (
+            {storyOpen && (
               <Story round={game.round} name={map.name} lines={chapter.intro} onClose={closeStory} />
             )}
 
-            {!story && game.paused && game.status === 'playing' && (
+            {!storyOpen && game.paused && game.status === 'playing' && (
               <div className="overlay">
                 <div className="modal px-box">
                   <h2>Paused</h2>
