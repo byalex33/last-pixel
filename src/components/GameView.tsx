@@ -87,8 +87,13 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     const el = stageRef.current!;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
-      let s = Math.min(r.width / W, r.height / H);
-      if (s >= 1) s = Math.floor(s);
+      const dpr = window.devicePixelRatio || 1;
+      const fit = Math.min(r.width / W, r.height / H);
+      // Snap to whole device pixels so every art pixel is the same size: on a 2x or 3x
+      // screen that gives 1.5x or 1.67x steps instead of falling back to 1x.
+      let s = fit * dpr >= 1 ? Math.floor(fit * dpr) / dpr : fit;
+      // A 1x screen has no even step between 1x and 2x; a slightly uneven 1.5x beats a tiny board.
+      if (s < 1.5 && fit >= 1.5) s = 1.5;
       setScale(Math.max(0.5, s));
     });
     ro.observe(el);
@@ -108,14 +113,14 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <span className={`stat${game.lives / game.maxLives < 0.34 ? ' danger' : ''}`} title="Portal integrity">
             <PiHeartFill className="red" /> {game.lives}
           </span>
-          <span className="stat" title="Gold">
+          <span className="stat num" title="Gold">
             <PiCoinsFill /> {game.gold}
           </span>
           <span className="stat" title="Wave">
             <PiFlagFill /> {game.wave}
             <small>/{game.endless ? <PiInfinityBold /> : TOTAL_WAVES}</small>
           </span>
-          <span className="stat dim" title="Kills">
+          <span className="stat num dim" title="Kills">
             <PiSkullFill /> {game.kills}
           </span>
         </div>
@@ -250,48 +255,56 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
         </div>
 
         <aside className="side">
-          <section className="panel px-box">
-            <h3>Build</h3>
-            <div className="shop">
-              {TOWER_ORDER.map((t, i) => {
-                const cost = TOWERS[t].levels[0].cost;
-                const locked = !game.unlocked(t);
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`shop-item${game.placing === t ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
-                    disabled={locked || (game.gold < cost && game.placing !== t)}
-                    onClick={(e) => {
-                      game.toggleBuild(t);
-                      e.currentTarget.blur();
-                    }}
-                    title={locked ? `Unlocks in round ${TOWERS[t].unlock + 1}` : TOWERS[t].blurb}
-                  >
-                    <kbd>{TOWER_KEYS[i]}</kbd>
-                    <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
-                    <span className="shop-name">{TOWERS[t].name}</span>
-                    {locked ? (
-                      <span className="shop-cost"><PiLockSimpleFill /> R{TOWERS[t].unlock + 1}</span>
-                    ) : (
-                      <span className="shop-cost"><PiCoinsFill /> {cost}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
+          {/* A selected tower takes the Build list's place so Upgrade and Sell never need a scroll. */}
           {sel ? (
             <Inspector game={game} t={sel} />
-          ) : game.placing ? (
-            <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
           ) : (
             <section className="panel px-box">
+              <h3>Build</h3>
+              <div className="shop">
+                {TOWER_ORDER.map((t, i) => {
+                  const cost = TOWERS[t].levels[0].cost;
+                  const locked = !game.unlocked(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`shop-item${game.placing === t ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
+                      disabled={locked || (game.gold < cost && game.placing !== t)}
+                      onClick={(e) => {
+                        game.toggleBuild(t);
+                        e.currentTarget.blur();
+                      }}
+                      title={locked ? `Unlocks in round ${TOWERS[t].unlock + 1}` : TOWERS[t].blurb}
+                    >
+                      <kbd>{TOWER_KEYS[i]}</kbd>
+                      <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
+                      <span className="shop-name">{TOWERS[t].name}</span>
+                      {locked ? (
+                        <span className="shop-cost"><PiLockSimpleFill /> R{TOWERS[t].unlock + 1}</span>
+                      ) : (
+                        <span className="shop-cost"><PiCoinsFill /> {cost}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {sel ? null : game.placing ? (
+            <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
+          ) : (
+            // Short screens drop the tip once the first wave is out (see .tip.is-old).
+            <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
               <h3>Tip</h3>
-              <p className="hint">
+              <p className="hint for-mouse">
                 Pick a tower, then click an empty tile to build it. Click a tower to upgrade or sell it.
                 Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
+              </p>
+              <p className="hint for-touch">
+                Pick a tower, then tap an empty tile twice to build it. Tap a tower to upgrade or sell it,
+                or tap an enemy to see its stats.
               </p>
             </section>
           )}
@@ -420,14 +433,21 @@ function Inspector({ game, t }: { game: Game; t: Tower }) {
       )}
       <div className="insp-actions">
         {next ? (
-          <Btn variant="primary" disabled={game.gold < next.cost} onClick={() => game.upgradeSelected()}>
+          <Btn
+            variant="primary"
+            disabled={game.gold < next.cost}
+            onClick={() => game.upgradeSelected()}
+            aria-keyshortcuts="U"
+          >
             <PiArrowFatUpFill /> Upgrade <PiCoinsFill /> {next.cost}
+            <kbd className="hotkey" aria-hidden="true">U</kbd>
           </Btn>
         ) : (
           <Btn disabled>Max level</Btn>
         )}
-        <Btn onClick={() => game.sellSelected()}>
+        <Btn onClick={() => game.sellSelected()} aria-keyshortcuts="S">
           Sell <PiCoinsFill /> {game.sellValue(t)}
+          <kbd className="hotkey" aria-hidden="true">S</kbd>
         </Btn>
       </div>
     </section>
@@ -456,7 +476,8 @@ function PlacingInfo({ type, onCancel }: { type: TowerType; onCancel: () => void
           </div>
         ))}
       </dl>
-      <p className="hint">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-mouse">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-touch">Tap an empty tile to preview the tower, then tap it again to build.</p>
     </section>
   );
 }

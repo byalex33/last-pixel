@@ -220,6 +220,19 @@ kbd {
   font-size: 11px;
 }
 
+/* Touch screens get "tap" wording; anything with a hovering pointer keeps the mouse wording. */
+@media (hover: none) and (pointer: coarse) {
+  .for-mouse {
+    display: none;
+  }
+}
+
+@media not all and (hover: none) and (pointer: coarse) {
+  .for-touch {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------------------- game */
 
 .game {
@@ -253,6 +266,7 @@ kbd {
   font-size: 18px;
   color: var(--k7);
   min-width: 60px;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat svg {
@@ -277,6 +291,46 @@ kbd {
 .stat.round small {
   margin-left: 2px;
   text-transform: uppercase;
+}
+
+/* Wide screens keep the HUD on one line: the map name gives way before anything wraps. */
+@media (min-width: 901px) {
+  .hud {
+    flex-wrap: nowrap;
+  }
+
+  .hud-stats {
+    flex-wrap: nowrap;
+    min-width: 0;
+    gap: clamp(12px, 1.4vw, 20px);
+  }
+
+  .hud-actions {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+
+  .stat {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  /* Silkscreen has no tabular digits, so room for five keeps the neighbours still as gold ticks. */
+  .stat.num {
+    min-width: calc(26px + 5ch);
+  }
+
+  .stat.round {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .stat.round small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .stat.danger {
@@ -481,6 +535,34 @@ kbd {
   justify-content: center;
 }
 
+.btn .hotkey {
+  margin-left: 2px;
+  box-shadow: none;
+}
+
+.btn-primary .hotkey {
+  background: var(--r0);
+}
+
+.btn:disabled .hotkey {
+  color: var(--k4);
+  background: var(--k1);
+}
+
+/* No keyboard to speak of on a touch screen. */
+@media (hover: none) and (pointer: coarse) {
+  .btn .hotkey {
+    display: none;
+  }
+}
+
+/* On short screens the tip makes way for the wave preview once play is under way. */
+@media (max-height: 820px) {
+  .tip.is-old {
+    display: none;
+  }
+}
+
 .preview {
   list-style: none;
   margin: 0;
@@ -611,6 +693,9 @@ kbd {
   .stage {
     padding: 12px 16px;
     height: 62vw;
+    /* Never taller than the screen below the HUD. */
+    height: min(62vw, calc(100vh - 96px));
+    height: min(62vw, calc(100dvh - 96px));
     min-height: 200px;
   }
 
@@ -652,6 +737,108 @@ kbd {
     height: 30px;
     padding: 0 8px;
     font-size: 11px;
+  }
+}
+
+/* Phones held sideways: one-line HUD, board beside a compact tower bar, no page scroll. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .game {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .game-main {
+    flex-direction: row;
+  }
+
+  .stage {
+    height: auto;
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .side {
+    width: 236px;
+    padding: 8px 10px 8px 2px;
+    gap: 10px;
+  }
+
+  .hud {
+    padding: 4px 10px;
+    gap: 4px 10px;
+  }
+
+  .hud-stats {
+    gap: 12px;
+  }
+
+  .stat {
+    font-size: 13px;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .stat svg {
+    font-size: 15px;
+  }
+
+  .stat.round small {
+    display: none;
+  }
+
+  .hud-actions {
+    gap: 2px;
+  }
+
+  .hud-actions .btn {
+    height: 26px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .panel {
+    padding: 8px;
+  }
+
+  .panel h3 {
+    margin-bottom: 6px;
+  }
+
+  .shop {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+
+  .shop-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 2px;
+    padding: 4px 2px;
+    font-size: 10px;
+  }
+
+  .shop-item kbd {
+    display: none;
+  }
+
+  /* Icons only; the name stays for screen readers and shows once a tower is picked. */
+  .shop-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .shop-item .icon32 {
+    width: 24px;
+    height: 24px;
+  }
+
+  .tip {
+    display: none;
   }
 }
 
