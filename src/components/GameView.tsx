@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import {
   PiArrowCounterClockwiseBold, PiArrowFatUpFill, PiArrowRightBold, PiBookOpenTextFill, PiCoinsFill, PiCrosshairFill,
   PiFastForwardFill, PiFlagFill, PiHeartFill, PiInfinityBold, PiMapTrifoldFill, PiPauseFill, PiPlayFill,
-  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiXBold,
+  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
+  PiXBold,
 } from 'react-icons/pi';
 import { H, W } from '../game/constants';
 import { Game, type Tower } from '../game/engine';
@@ -45,16 +46,34 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   };
   // Wait for the loader to clear so the typing is seen and keys still reach the loader.
   const storyOpen = story && !!chapter && !paused;
-  // HUD actions are off while the story is up.
-  const blocked = storyOpen;
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  // HUD actions are off while the story or the restart check is up.
+  const blocked = storyOpen || confirmRestart;
 
-  // The story holds the game still, then hands back whatever pause state it found.
+  // Both hold the game still, then hand back whatever pause state they found.
   useEffect(() => {
-    if (!storyOpen) return;
+    if (!blocked) return;
     const was = game.paused;
     game.setPaused(true);
     return () => game.setPaused(was);
-  }, [game, storyOpen]);
+  }, [game, blocked]);
+
+  // Only ask once a wave has been played; a fresh or lost round has nothing to lose.
+  const restart = () => {
+    if (game.wave > 0 && game.status !== 'lost') setConfirmRestart(true);
+    else onRestart();
+  };
+
+  // While the restart check is open, keys never reach the game; Escape cancels.
+  useEffect(() => {
+    if (!confirmRestart) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape') setConfirmRestart(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [confirmRestart]);
 
   useEffect(() => {
     if (paused) return;
@@ -127,7 +146,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
-          <Btn onClick={onRestart} aria-label="Restart round" title="Restart round" disabled={blocked}>
+          <Btn onClick={restart} aria-label="Restart round" title="Restart round" disabled={blocked}>
             <PiArrowCounterClockwiseBold />
           </Btn>
         </div>
@@ -150,13 +169,13 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               <Story round={game.round} name={map.name} lines={chapter.intro} onClose={closeStory} />
             )}
 
-            {!storyOpen && game.paused && game.status === 'playing' && (
+            {!blocked && game.paused && game.status === 'playing' && (
               <div className="overlay">
                 <div className="modal px-box">
                   <h2>Paused</h2>
                   <div className="modal-actions">
                     <Btn variant="primary" onClick={() => game.togglePause()}><PiPlayFill /> Resume</Btn>
-                    <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
+                    <Btn onClick={restart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
                     {game.endless && game.hasNextRound && (
                       <Btn onClick={onNextRound}><PiArrowRightBold /> Next round</Btn>
                     )}
@@ -186,7 +205,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               </div>
             )}
 
-            {game.status === 'won' && (
+            {game.status === 'won' && !confirmRestart && (
               <div className="overlay">
                 <div className="modal px-box">
                   <PiTrophyFill className="modal-icon" />
@@ -205,6 +224,24 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                       <Btn variant="primary" onClick={onNewCampaign}><PiArrowCounterClockwiseBold /> New campaign</Btn>
                     )}
                     <Btn onClick={() => game.continueEndless()}><PiInfinityBold /> Endless</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmRestart && (
+              <div className="overlay">
+                <div className="modal px-box" role="alertdialog" aria-labelledby="restart-title">
+                  <PiWarningFill className="modal-icon red" />
+                  <h2 id="restart-title">Restart round?</h2>
+                  <p>
+                    {game.status === 'won'
+                      ? 'You will play this cleared round again from wave 1.'
+                      : `You will lose wave ${game.wave} and start again from wave 1.`}
+                  </p>
+                  <div className="modal-actions">
+                    <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart</Btn>
+                    <Btn variant="primary" onClick={() => setConfirmRestart(false)} autoFocus><PiXBold /> Cancel</Btn>
                   </div>
                 </div>
               </div>
