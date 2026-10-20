@@ -10,7 +10,7 @@ import {
 } from './sprites';
 import { buildBackground } from './background';
 import { sfx } from './audio';
-import { saveBest, saveProgress, type Snapshot } from './storage';
+import { loadProgress, saveBest, saveProgress, type Snapshot } from './storage';
 
 export interface Tower {
   id: number;
@@ -160,6 +160,8 @@ export class Game {
   private listeners = new Set<() => void>();
   private dirty = true;
   private intro: [string, string] | null = null;
+  // Furthest round reached in the campaign, kept in step with the save.
+  private reached = 0;
 
   constructor(map: MapDef, snap?: Snapshot) {
     this.map = map;
@@ -181,6 +183,7 @@ export class Game {
     this.decals.width = W;
     this.decals.height = H;
     this.dctx = this.decals.getContext('2d')!;
+    this.reached = loadProgress().unlocked;
     if (snap?.mapId === map.id) this.restore(snap);
     else this.checkpoint();
     const fresh = TOWER_ORDER.filter((t) => TOWERS[t].unlock === this.round).map((t) => TOWERS[t].name);
@@ -222,17 +225,19 @@ export class Game {
   // Saves the round between waves. Reloading mid-wave replays that wave from its start.
   private checkpoint() {
     if (this.waveActive || this.status !== 'playing') return;
-    saveProgress({
-      round: this.round,
-      snapshot: {
-        mapId: this.map.id, wave: this.wave, gold: this.gold, lives: this.lives, kills: this.kills,
-        endless: this.endless, speed: this.speed, autoWave: this.autoWave,
-        towers: this.towers.map(({ type, tx, ty, level, mode, spent, kills, dmgDone }) => (
-          { type, tx, ty, level, mode, spent, kills, dmgDone }
-        )),
-        mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
-      },
+    this.save(this.round, {
+      mapId: this.map.id, wave: this.wave, gold: this.gold, lives: this.lives, kills: this.kills,
+      endless: this.endless, speed: this.speed, autoWave: this.autoWave,
+      towers: this.towers.map(({ type, tx, ty, level, mode, spent, kills, dmgDone }) => (
+        { type, tx, ty, level, mode, spent, kills, dmgDone }
+      )),
+      mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
     });
+  }
+
+  // Saving never lowers the furthest round reached; see saveProgress.
+  private save(round: number, snapshot?: Snapshot) {
+    this.reached = Math.max(this.reached, saveProgress({ round, snapshot }).unlocked);
   }
 
   get hasNextRound() {
@@ -249,6 +254,11 @@ export class Game {
 
   get nextRound() {
     return Math.min(this.round + 1, MAPS.length - 1);
+  }
+
+  // The next round is open: beaten this time, or on an earlier run of this round.
+  get nextUnlocked() {
+    return this.hasNextRound && this.reached > this.round;
   }
 
   /* ------------------------------------------------------------ lifecycle */
@@ -1195,7 +1205,7 @@ export class Game {
       this.placing = null;
       saveBest(this.map.id, this.wave - 1);
       // Falling in endless still counts the round as beaten.
-      saveProgress({ round: this.endless ? this.nextRound : this.round });
+      this.save(this.endless ? this.nextRound : this.round);
       sfx.play('lose');
     }
     this.touch();
@@ -1219,7 +1229,7 @@ export class Game {
     if (this.wave >= TOTAL_WAVES && !this.endless) {
       this.status = 'won';
       this.placing = null;
-      saveProgress({ round: this.nextRound });
+      this.save(this.nextRound);
       sfx.play('win');
     } else {
       this.showBanner('Wave clear', `+${bonus} gold`);

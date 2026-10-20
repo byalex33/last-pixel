@@ -1,3 +1,5 @@
+import { MAPS } from './maps';
+
 const BEST_KEY = 'lastpixel.best.v1';
 const MUTE_KEY = 'lastpixel.muted.v1';
 
@@ -79,7 +81,8 @@ export interface Snapshot {
 }
 
 export interface Progress {
-  round: number; // index into MAPS
+  round: number; // index into MAPS of the round in progress
+  unlocked: number; // index into MAPS of the furthest round reached, never below round
   snapshot?: Snapshot;
 }
 
@@ -87,19 +90,31 @@ export function loadProgress(): Progress {
   try {
     const raw = localStorage.getItem(PROGRESS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Partial<Progress>) : null;
-    if (parsed && typeof parsed.round === 'number') return { round: parsed.round, snapshot: parsed.snapshot };
+    if (parsed && typeof parsed.round === 'number') {
+      const { round, snapshot } = parsed;
+      // Older saves only kept the round in progress. Endless is only offered once a round is
+      // won, so an Endless checkpoint means the next round was already open.
+      const unlocked = typeof parsed.unlocked === 'number'
+        ? parsed.unlocked
+        : Math.min(round + (snapshot?.endless ? 1 : 0), MAPS.length - 1);
+      return { round, unlocked: Math.max(round, unlocked), snapshot };
+    }
   } catch {
     /* storage unavailable or corrupt */
   }
-  return { round: 0 };
+  return { round: 0, unlocked: 0 };
 }
 
-export function saveProgress(progress: Progress) {
+// Saves the round in progress. The furthest round reached only ever rises, so restarting,
+// replaying or going Endless on an earlier round never locks a later one again.
+export function saveProgress({ round, snapshot }: { round: number; snapshot?: Snapshot }): Progress {
+  const progress: Progress = { round, unlocked: Math.max(round, loadProgress().unlocked), snapshot };
   try {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
   } catch {
     /* storage unavailable */
   }
+  return progress;
 }
 
 /* ---------------------------------------------------------------- story */

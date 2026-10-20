@@ -141,7 +141,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                   <div className="modal-actions">
                     <Btn variant="primary" onClick={() => game.togglePause()}><PiPlayFill /> Resume</Btn>
                     <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
-                    {game.endless && game.hasNextRound && (
+                    {game.nextUnlocked && (
                       <Btn onClick={onNextRound}><PiArrowRightBold /> Next round</Btn>
                     )}
                   </div>
