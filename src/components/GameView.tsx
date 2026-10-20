@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import {
   PiArrowCounterClockwiseBold, PiArrowFatUpFill, PiArrowRightBold, PiBookOpenTextFill, PiCoinsFill, PiCrosshairFill,
   PiFastForwardFill, PiFlagFill, PiHeartFill, PiInfinityBold, PiMapTrifoldFill, PiPauseFill, PiPlayFill,
-  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiXBold,
+  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
+  PiXBold,
 } from 'react-icons/pi';
 import { H, W } from '../game/constants';
 import { Game, type Tower } from '../game/engine';
@@ -43,6 +44,36 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     setStory(false);
     if (loadStorySeen() < game.round) saveStorySeen(game.round);
   };
+  // Wait for the loader to clear so the typing is seen and keys still reach the loader.
+  const storyOpen = story && !!chapter && !paused;
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  // HUD actions are off while the story or the restart check is up.
+  const blocked = storyOpen || confirmRestart;
+
+  // Both hold the game still, then hand back whatever pause state they found.
+  useEffect(() => {
+    if (!blocked) return;
+    const was = game.paused;
+    game.setPaused(true);
+    return () => game.setPaused(was);
+  }, [game, blocked]);
+
+  // Only ask once a wave has been played; a fresh or lost round has nothing to lose.
+  const restart = () => {
+    if (game.wave > 0 && game.status !== 'lost') setConfirmRestart(true);
+    else onRestart();
+  };
+
+  // While the restart check is open, keys never reach the game; Escape cancels.
+  useEffect(() => {
+    if (!confirmRestart) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape') setConfirmRestart(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [confirmRestart]);
 
   useEffect(() => {
     if (paused) return;
@@ -56,8 +87,13 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     const el = stageRef.current!;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
-      let s = Math.min(r.width / W, r.height / H);
-      if (s >= 1) s = Math.floor(s);
+      const dpr = window.devicePixelRatio || 1;
+      const fit = Math.min(r.width / W, r.height / H);
+      // Snap to whole device pixels so every art pixel is the same size: on a 2x or 3x
+      // screen that gives 1.5x or 1.67x steps instead of falling back to 1x.
+      let s = fit * dpr >= 1 ? Math.floor(fit * dpr) / dpr : fit;
+      // A 1x screen has no even step between 1x and 2x; a slightly uneven 1.5x beats a tiny board.
+      if (s < 1.5 && fit >= 1.5) s = 1.5;
       setScale(Math.max(0.5, s));
     });
     ro.observe(el);
@@ -77,40 +113,45 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <span className={`stat${game.lives / game.maxLives < 0.34 ? ' danger' : ''}`} title="Portal integrity">
             <PiHeartFill className="red" /> {game.lives}
           </span>
-          <span className="stat" title="Gold">
+          <span className="stat num" title="Gold">
             <PiCoinsFill /> {game.gold}
           </span>
           <span className="stat" title="Wave">
             <PiFlagFill /> {game.wave}
             <small>/{game.endless ? <PiInfinityBold /> : TOTAL_WAVES}</small>
           </span>
-          <span className="stat dim" title="Kills">
+          <span className="stat num dim" title="Kills">
             <PiSkullFill /> {game.kills}
           </span>
         </div>
         <div className="hud-actions">
-          <Btn variant="primary" onClick={() => game.sendWave()} disabled={game.waveActive || game.status !== 'playing'}>
+          <Btn variant="primary" onClick={() => game.sendWave()} disabled={blocked || game.waveActive || game.status !== 'playing'}>
             <PiPlayFill />
             {game.waveActive ? `${game.remaining()} left` : game.wave === 0 ? 'Start' : 'Next wave'}
           </Btn>
-          <Btn onClick={() => game.togglePause()} aria-label={game.paused ? 'Resume' : 'Pause'} active={game.paused}>
+          <Btn
+            onClick={() => game.togglePause()}
+            aria-label={game.paused ? 'Resume' : 'Pause'}
+            active={game.paused && !blocked}
+            disabled={blocked}
+          >
             {game.paused ? <PiPlayFill /> : <PiPauseFill />}
           </Btn>
-          <Btn onClick={() => game.cycleSpeed()} aria-label="Game speed" active={game.speed > 1}>
+          <Btn onClick={() => game.cycleSpeed()} aria-label="Game speed" active={game.speed > 1} disabled={blocked}>
             <PiFastForwardFill /> {game.speed}x
           </Btn>
-          <Btn onClick={() => game.toggleAuto()} active={game.autoWave} title="Automatically send waves">
+          <Btn onClick={() => game.toggleAuto()} active={game.autoWave} title="Automatically send waves" disabled={blocked}>
             <PiRepeatBold /> Auto
           </Btn>
           {chapter && (
-            <Btn onClick={() => setStory(true)} aria-label="Story" title="Story">
+            <Btn onClick={() => setStory(true)} aria-label="Story" title="Story" disabled={blocked}>
               <PiBookOpenTextFill />
             </Btn>
           )}
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
-          <Btn onClick={onRestart} aria-label="Restart round" title="Restart round">
+          <Btn onClick={restart} aria-label="Restart round" title="Restart round" disabled={blocked}>
             <PiArrowCounterClockwiseBold />
           </Btn>
         </div>
@@ -129,19 +170,18 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               </div>
             )}
 
-            {/* Wait for the loader to clear so the typing is seen and keys still reach the loader. */}
-            {story && chapter && !paused && (
+            {storyOpen && (
               <Story round={game.round} name={map.name} lines={chapter.intro} onClose={closeStory} />
             )}
 
-            {!story && game.paused && game.status === 'playing' && (
+            {!blocked && game.paused && game.status === 'playing' && (
               <div className="overlay">
                 <div className="modal px-box">
                   <h2>Paused</h2>
                   <div className="modal-actions">
                     <Btn variant="primary" onClick={() => game.togglePause()}><PiPlayFill /> Resume</Btn>
-                    <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
-                    {game.endless && game.hasNextRound && (
+                    <Btn onClick={restart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
+                    {game.nextUnlocked && (
                       <Btn onClick={onNextRound}><PiArrowRightBold /> Next round</Btn>
                     )}
                   </div>
@@ -170,7 +210,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               </div>
             )}
 
-            {game.status === 'won' && (
+            {game.status === 'won' && !confirmRestart && (
               <div className="overlay">
                 <div className="modal px-box">
                   <PiTrophyFill className="modal-icon" />
@@ -193,52 +233,78 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                 </div>
               </div>
             )}
+
+            {confirmRestart && (
+              <div className="overlay">
+                <div className="modal px-box" role="alertdialog" aria-labelledby="restart-title">
+                  <PiWarningFill className="modal-icon red" />
+                  <h2 id="restart-title">Restart round?</h2>
+                  <p>
+                    {game.status === 'won'
+                      ? 'You will play this cleared round again from wave 1.'
+                      : `You are on wave ${game.wave}. Restarting takes you back to wave 1.`}
+                  </p>
+                  <div className="modal-actions">
+                    <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart</Btn>
+                    <Btn variant="primary" onClick={() => setConfirmRestart(false)} autoFocus><PiXBold /> Cancel</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <aside className="side">
-          <section className="panel px-box">
-            <h3>Build</h3>
-            <div className="shop">
-              {TOWER_ORDER.map((t, i) => {
-                const cost = TOWERS[t].levels[0].cost;
-                const locked = !game.unlocked(t);
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`shop-item${game.placing === t ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
-                    disabled={locked || (game.gold < cost && game.placing !== t)}
-                    onClick={(e) => {
-                      game.toggleBuild(t);
-                      e.currentTarget.blur();
-                    }}
-                    title={locked ? `Unlocks in round ${TOWERS[t].unlock + 1}` : TOWERS[t].blurb}
-                  >
-                    <kbd>{TOWER_KEYS[i]}</kbd>
-                    <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
-                    <span className="shop-name">{TOWERS[t].name}</span>
-                    {locked ? (
-                      <span className="shop-cost"><PiLockSimpleFill /> R{TOWERS[t].unlock + 1}</span>
-                    ) : (
-                      <span className="shop-cost"><PiCoinsFill /> {cost}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
+          {/* A selected tower takes the Build list's place so Upgrade and Sell never need a scroll. */}
           {sel ? (
             <Inspector game={game} t={sel} />
-          ) : game.placing ? (
-            <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
           ) : (
             <section className="panel px-box">
+              <h3>Build</h3>
+              <div className="shop">
+                {TOWER_ORDER.map((t, i) => {
+                  const cost = TOWERS[t].levels[0].cost;
+                  const locked = !game.unlocked(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`shop-item${game.placing === t ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
+                      disabled={locked || (game.gold < cost && game.placing !== t)}
+                      onClick={(e) => {
+                        game.toggleBuild(t);
+                        e.currentTarget.blur();
+                      }}
+                      title={locked ? `Unlocks in round ${TOWERS[t].unlock + 1}` : TOWERS[t].blurb}
+                    >
+                      <kbd>{TOWER_KEYS[i]}</kbd>
+                      <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
+                      <span className="shop-name">{TOWERS[t].name}</span>
+                      {locked ? (
+                        <span className="shop-cost"><PiLockSimpleFill /> R{TOWERS[t].unlock + 1}</span>
+                      ) : (
+                        <span className="shop-cost"><PiCoinsFill /> {cost}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {sel ? null : game.placing ? (
+            <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
+          ) : (
+            // Short screens drop the tip once the first wave is out (see .tip.is-old).
+            <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
               <h3>Tip</h3>
-              <p className="hint">
+              <p className="hint for-mouse">
                 Pick a tower, then click an empty tile to build it. Click a tower to upgrade or sell it.
                 Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
+              </p>
+              <p className="hint for-touch">
+                Pick a tower, then tap an empty tile twice to build it. Tap a tower to upgrade or sell it,
+                or tap an enemy to see its stats.
               </p>
             </section>
           )}
@@ -367,14 +433,21 @@ function Inspector({ game, t }: { game: Game; t: Tower }) {
       )}
       <div className="insp-actions">
         {next ? (
-          <Btn variant="primary" disabled={game.gold < next.cost} onClick={() => game.upgradeSelected()}>
+          <Btn
+            variant="primary"
+            disabled={game.gold < next.cost}
+            onClick={() => game.upgradeSelected()}
+            aria-keyshortcuts="U"
+          >
             <PiArrowFatUpFill /> Upgrade <PiCoinsFill /> {next.cost}
+            <kbd className="hotkey" aria-hidden="true">U</kbd>
           </Btn>
         ) : (
           <Btn disabled>Max level</Btn>
         )}
-        <Btn onClick={() => game.sellSelected()}>
+        <Btn onClick={() => game.sellSelected()} aria-keyshortcuts="S">
           Sell <PiCoinsFill /> {game.sellValue(t)}
+          <kbd className="hotkey" aria-hidden="true">S</kbd>
         </Btn>
       </div>
     </section>
@@ -403,7 +476,8 @@ function PlacingInfo({ type, onCancel }: { type: TowerType; onCancel: () => void
           </div>
         ))}
       </dl>
-      <p className="hint">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-mouse">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
+      <p className="hint for-touch">Tap an empty tile to preview the tower, then tap it again to build.</p>
     </section>
   );
 }

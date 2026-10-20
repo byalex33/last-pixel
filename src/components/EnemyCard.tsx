@@ -22,7 +22,7 @@ function abilities(e: Enemy): { icon: ReactNode; text: string }[] {
   const out: { icon: ReactNode; text: string }[] = [];
   if (def.boss) out.push({ icon: <PiCrownFill />, text: 'Boss: shrugs off most knockback and cannot be stunned' });
   if (def.jam) out.push({ icon: <PiLightningSlashFill />, text: `Shuts down towers within 3 tiles for ${def.jam}s every few seconds` });
-  if (def.heal) out.push({ icon: <PiFirstAidFill />, text: `Heals nearby foes by ${Math.round(def.heal * 100)}% of their health every 2.5s` });
+  if (def.heal) out.push({ icon: <PiFirstAidFill />, text: `Heals nearby foes by ${Math.round(def.heal * 100)}% of their health${def.healCap ? ` (up to ${def.healCap})` : ''} every 2.5s` });
   if (def.blink) out.push({ icon: <PiWaveformFill />, text: `Blinks ${(def.blink / 16).toFixed(1)} tiles forward every few seconds` });
   if (e.armor > 0) out.push({ icon: <PiShieldFill />, text: `Armor ${e.armor}: blocks ${e.armor} damage per hit. Burns and lasers ignore it` });
   if (def.splits) out.push({ icon: <PiArrowsSplitBold />, text: `Splits into ${def.splits} Runners on death` });

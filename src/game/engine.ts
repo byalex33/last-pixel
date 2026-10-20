@@ -10,7 +10,7 @@ import {
 } from './sprites';
 import { buildBackground } from './background';
 import { sfx } from './audio';
-import { saveBest, saveProgress, type Snapshot } from './storage';
+import { loadProgress, saveBest, saveProgress, type Snapshot } from './storage';
 
 export interface Tower {
   id: number;
@@ -80,6 +80,8 @@ export interface Banner { id: number; text: string; sub?: string; danger?: boole
 let uid = 0;
 // Ground a foe must gain past its last Quake hit before the next slam can push it back again.
 const KNOCK_MARGIN = 8;
+// Seconds Auto waits before sending the next wave, so there is always time to build.
+const AUTO_DELAY = 2.5;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -158,6 +160,8 @@ export class Game {
   private listeners = new Set<() => void>();
   private dirty = true;
   private intro: [string, string] | null = null;
+  // Furthest round reached in the campaign, kept in step with the save.
+  private reached = 0;
 
   constructor(map: MapDef, snap?: Snapshot) {
     this.map = map;
@@ -179,6 +183,7 @@ export class Game {
     this.decals.width = W;
     this.decals.height = H;
     this.dctx = this.decals.getContext('2d')!;
+    this.reached = loadProgress().unlocked;
     if (snap?.mapId === map.id) this.restore(snap);
     else this.checkpoint();
     const fresh = TOWER_ORDER.filter((t) => TOWERS[t].unlock === this.round).map((t) => TOWERS[t].name);
@@ -198,6 +203,7 @@ export class Game {
     this.endless = s.endless;
     this.speed = s.speed;
     this.autoWave = s.autoWave;
+    this.autoT = AUTO_DELAY;
     for (const o of s.towers) {
       const type = o.type as TowerType;
       if (!TOWERS[type] || !isUnlocked(type, this.round) || !this.canBuild(o.tx, o.ty)) continue;
@@ -208,21 +214,30 @@ export class Game {
         spent: o.spent, recoil: 0, pulse: 0, kills: o.kills, dmgDone: o.dmgDone, charge: 0, lockId: 0, firing: 0, jam: 0,
       });
     }
+    // Mines come back already landed; any whose Minelayer did not come back are dropped.
+    for (const m of s.mines ?? []) {
+      const src = this.towers.find((t) => t.type === 'mines' && t.tx === m.tx && t.ty === m.ty);
+      if (!src) continue;
+      this.mines.push({ x: m.x, y: m.y, sx: m.x, sy: m.y, t: 0.45, dur: 0.45, dmg: m.dmg, splash: m.splash, src });
+    }
   }
 
   // Saves the round between waves. Reloading mid-wave replays that wave from its start.
   private checkpoint() {
     if (this.waveActive || this.status !== 'playing') return;
-    saveProgress({
-      round: this.round,
-      snapshot: {
-        mapId: this.map.id, wave: this.wave, gold: this.gold, lives: this.lives, kills: this.kills,
-        endless: this.endless, speed: this.speed, autoWave: this.autoWave,
-        towers: this.towers.map(({ type, tx, ty, level, mode, spent, kills, dmgDone }) => (
-          { type, tx, ty, level, mode, spent, kills, dmgDone }
-        )),
-      },
+    this.save(this.round, {
+      mapId: this.map.id, wave: this.wave, gold: this.gold, lives: this.lives, kills: this.kills,
+      endless: this.endless, speed: this.speed, autoWave: this.autoWave,
+      towers: this.towers.map(({ type, tx, ty, level, mode, spent, kills, dmgDone }) => (
+        { type, tx, ty, level, mode, spent, kills, dmgDone }
+      )),
+      mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
     });
+  }
+
+  // Saving never lowers the furthest round reached; see saveProgress.
+  private save(round: number, snapshot?: Snapshot) {
+    this.reached = Math.max(this.reached, saveProgress({ round, snapshot }).unlocked);
   }
 
   get hasNextRound() {
@@ -239,6 +254,11 @@ export class Game {
 
   get nextRound() {
     return Math.min(this.round + 1, MAPS.length - 1);
+  }
+
+  // The next round is open: beaten this time, or on an earlier run of this round.
+  get nextUnlocked() {
+    return this.hasNextRound && this.reached > this.round;
   }
 
   /* ------------------------------------------------------------ lifecycle */
@@ -379,6 +399,13 @@ export class Game {
     this.touch();
   }
 
+  // For overlays that hold the game still, then hand back the pause state it had before.
+  setPaused(paused: boolean) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.touch();
+  }
+
   cycleSpeed() {
     this.speed = this.speed >= 3 ? 1 : this.speed + 1;
     this.checkpoint();
@@ -395,6 +422,7 @@ export class Game {
   continueEndless() {
     this.endless = true;
     this.status = 'playing';
+    this.autoT = AUTO_DELAY;
     this.showBanner('Endless', 'How long can you hold?', true);
     this.checkpoint();
     this.touch();
@@ -526,7 +554,8 @@ export class Game {
       this.touch();
       return;
     }
-    if (this.status !== 'playing') return;
+    // Middle and other buttons do nothing; only the primary button builds or selects.
+    if (e.button !== 0 || this.status !== 'playing') return;
     // On touch, first tap previews the placement and the second tap confirms it.
     const same = this.hover && this.hover.tx === tile.tx && this.hover.ty === tile.ty;
     this.hover = tile;
@@ -550,7 +579,11 @@ export class Game {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
+    // Leave browser shortcuts (Ctrl+S, Ctrl+F, Ctrl+0...) alone, and don't flicker build mode on key repeat.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const k = e.key.toLowerCase();
+    // Behind the Pause menu only the pause and escape keys still work.
+    if (this.paused && k !== 'p' && k !== 'escape') return;
     const idx = TOWER_KEYS.indexOf(k);
     if (idx >= 0 && idx < TOWER_ORDER.length) {
       this.toggleBuild(TOWER_ORDER[idx]);
@@ -819,7 +852,7 @@ export class Game {
       e.abilT = 2.5;
       for (const o of this.enemies) {
         if (!o.alive || o.hp >= o.maxHp || Math.hypot(o.x - e.x, o.y - e.y) > 24) continue;
-        o.hp = Math.min(o.maxHp, o.hp + o.maxHp * def.heal);
+        o.hp = Math.min(o.maxHp, o.hp + Math.min(o.maxHp * def.heal, def.healCap ?? Infinity));
         for (let i = 0; i < 3; i++) this.parts.push({ x: o.x + rand(-3, 3), y: o.y - 2, vx: 0, vy: -16, life: 0.5, max: 0.5, color: PAL.k7, grav: 0 });
       }
       this.rings.push({ x: e.x, y: e.y, r0: 2, r1: 24, life: 0.4, max: 0.4, color: PAL.k5 });
@@ -1078,6 +1111,8 @@ export class Game {
     t.cd = rate;
     t.recoil = 0.15;
     sfx.play('mine');
+    // Mines laid between waves are kept too; during a wave this waits for the wave to end.
+    this.checkpoint();
   }
 
   private slam(t: Tower, L: TowerLevel, dmgMul: number, rate: number) {
@@ -1182,7 +1217,7 @@ export class Game {
       this.placing = null;
       saveBest(this.map.id, this.wave - 1);
       // Falling in endless still counts the round as beaten.
-      saveProgress({ round: this.endless ? this.nextRound : this.round });
+      this.save(this.endless ? this.nextRound : this.round);
       sfx.play('lose');
     }
     this.touch();
@@ -1206,12 +1241,12 @@ export class Game {
     if (this.wave >= TOTAL_WAVES && !this.endless) {
       this.status = 'won';
       this.placing = null;
-      saveProgress({ round: this.nextRound });
+      this.save(this.nextRound);
       sfx.play('win');
     } else {
       this.showBanner('Wave clear', `+${bonus} gold`);
       sfx.play('clear');
-      this.autoT = 2.5;
+      this.autoT = AUTO_DELAY;
       this.checkpoint();
     }
     this.touch();
