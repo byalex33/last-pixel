@@ -1210,3 +1210,30 @@ kbd {
     animation: none;
   }
 }
+
+.hover-modal {
+  position: fixed;
+  display: block;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #080808;
+  border: 3px solid #f4f4f4;
+  padding: 40px;
+} 
+
+
+.hover-modal-buttons{
+  margin-top: 5%;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+}
+
+.hover-modal-buttons .btn{
+  height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
+  margin: 10px;
+}

@@ -3,7 +3,7 @@ import { GameView } from './components/GameView';
 import { Loader } from './components/Loader';
 import { MAPS } from './game/maps';
 import { loadProgress, saveProgress, saveStorySeen, type Progress } from './game/storage';
-
+import Modal from './components/Modal';
 type Run = Progress & { run: number };
 
 function clampRound(round: number) {
@@ -20,6 +20,7 @@ export function App() {
     const p = loadProgress();
     return { ...p, round: clampRound(p.round), run: 0 };
   });
+  const [isRestartModalOpen, setIsRestartModalOpen] = useState(false);
   const [phase, setPhase] = useState<'loading' | 'revealing' | 'done'>('loading');
 
   const startRound = (round: number) => {
@@ -35,13 +36,20 @@ export function App() {
         map={MAPS[run.round]}
         snapshot={run.snapshot}
         paused={phase === 'loading'}
-        onRestart={() => startRound(run.round)}
+        onRestart={() => setIsRestartModalOpen(true)}
         onNextRound={() => startRound(run.round + 1)}
         onNewCampaign={() => {
           saveStorySeen(-1);
           startRound(0);
         }}
       />
+      {isRestartModalOpen && (
+        <Modal text="Reset the game" onAccept={() => {
+            setIsRestartModalOpen(false);
+            startRound(run.round)
+          }
+        } onDecline={() => setIsRestartModalOpen(false)} />
+      )}
       {phase !== 'done' && (
         <Loader
           subtitle={subtitle(run)}

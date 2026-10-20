@@ -110,7 +110,10 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
-          <Btn onClick={onRestart} aria-label="Restart round" title="Restart round">
+          <Btn onClick={() => {
+            if(!game.paused) game.togglePause();
+            onRestart()
+          }} aria-label="Restart round" title="Restart round">
             <PiArrowCounterClockwiseBold />
           </Btn>
         </div>
