@@ -1,0 +1,215 @@
+/* One look only: the game's black screen with its single red accent. */
+:root {
+  --k0: #080808;
+  --k1: #131313;
+  --k3: #343434;
+  --k4: #585858;
+  --k5: #8e8e8e;
+  --k7: #f4f4f4;
+  --r1: #7a0f1d;
+  --r2: #d11d32;
+  --font: 'Silkscreen', ui-monospace, 'Courier New', monospace;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--k0);
+  color: var(--k7);
+  font-family: var(--font);
+  overflow: hidden;
+  -webkit-font-smoothing: none;
+}
+
+.red {
+  color: var(--r2);
+}
+
+.stage {
+  position: relative;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--k0);
+  overflow: hidden;
+}
+
+.frame {
+  position: relative;
+  width: min(100%, calc(100dvh * 16 / 9));
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.screen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  background: var(--k0);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.start {
+  background: color-mix(in srgb, var(--k0) 88%, transparent);
+}
+
+.end .row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 81%;
+  transform: translateY(-50%);
+}
+
+.eyebrow,
+.sub,
+.note {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+}
+
+.eyebrow {
+  color: var(--k5);
+  font-size: clamp(11px, 1.4vw, 16px);
+}
+
+h1 {
+  margin: 0;
+  font-weight: 700;
+  font-size: clamp(44px, 9vw, 120px);
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-shadow: 0.06em 0.06em 0 var(--r1);
+  text-wrap: balance;
+}
+
+.sub {
+  color: var(--k7);
+  font-size: clamp(12px, 1.8vw, 20px);
+  letter-spacing: 0.15em;
+  margin-bottom: 14px;
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--k4);
+  font-size: clamp(10px, 1.2vw, 13px);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+/* Notched pixel button, as in the game. */
+.btn {
+  --bc: var(--k3);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 3px;
+  padding: 14px 26px;
+  border: 0;
+  background: var(--k1);
+  color: var(--k7);
+  font: 700 clamp(14px, 1.6vw, 18px) / 1 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  box-shadow: 0 -3px 0 0 var(--bc), 0 3px 0 0 var(--bc), -3px 0 0 0 var(--bc), 3px 0 0 0 var(--bc);
+  transition: transform 80ms steps(2), background-color 80ms steps(2);
+}
+
+.btn svg {
+  font-size: 1.15em;
+}
+
+.btn:hover {
+  --bc: var(--k5);
+}
+
+.btn:active {
+  transform: translateY(2px);
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--k7);
+  outline-offset: 6px;
+}
+
+.btn.primary {
+  --bc: var(--r2);
+  background: var(--r1);
+}
+
+.btn.primary:hover {
+  background: var(--r2);
+  --bc: var(--k7);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.btn.icon {
+  padding: 10px;
+}
+
+.corner {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.rec {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--r2);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec {
+    animation: none;
+  }
+}

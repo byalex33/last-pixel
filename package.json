@@ -1,0 +1,33 @@
+{
+  "name": "last-pixel-td",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A monochrome pixel-art tower defense game for the browser.",
+  "license": "MIT",
+  "homepage": "https://lastpixel.alex.codes",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byalex33/last-pixel.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:trailer": "tsc --noEmit && vite build --config vite.trailer.config.ts"
+  },
+  "dependencies": {
+    "@fontsource/silkscreen": "^5.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}
