@@ -12,7 +12,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "resolveJsonModule": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "types": []
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "server", "api", "tests", "vite.config.ts"]
 }

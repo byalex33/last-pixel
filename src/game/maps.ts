@@ -1,4 +1,4 @@
-import { COLS, ROWS } from './constants';
+import { COLS, ROWS } from './constants.js';
 
 export interface MapDef {
   id: string;

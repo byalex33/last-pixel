@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   PiArrowCounterClockwiseBold, PiArrowFatUpFill, PiArrowRightBold, PiBookOpenTextFill, PiCoinsFill, PiCrosshairFill,
   PiFastForwardFill, PiFlagFill, PiHeartFill, PiInfinityBold, PiMapTrifoldFill, PiPauseFill, PiPlayFill,
-  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
+  PiLockSimpleFill, PiRankingFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
   PiXBold,
 } from 'react-icons/pi';
 import { H, W } from '../game/constants';
@@ -14,9 +14,12 @@ import {
   ENEMIES, TARGET_MODES, TOTAL_WAVES, TOWERS, TOWER_KEYS, TOWER_ORDER, type TowerLevel, type TowerType,
 } from '../game/data';
 import { enemyIcon, towerIcon } from '../game/sprites';
+import { openRun } from '../net/api';
 import { Btn } from './Btn';
 import { EnemyCard } from './EnemyCard';
+import { Leaderboard } from './Leaderboard';
 import { Story } from './Story';
+import { SubmitScore } from './SubmitScore';
 import { useMuted } from './useMuted';
 
 interface Props {
@@ -47,10 +50,11 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   // Wait for the loader to clear so the typing is seen and keys still reach the loader.
   const storyOpen = story && !!chapter && !paused;
   const [confirmRestart, setConfirmRestart] = useState(false);
-  // HUD actions are off while the story or the restart check is up.
-  const blocked = storyOpen || confirmRestart;
+  const [board, setBoard] = useState<{ highlight?: string } | null>(null);
+  // HUD actions are off while the story, the restart check or the leaderboard is up.
+  const blocked = storyOpen || confirmRestart || !!board;
 
-  // Both hold the game still, then hand back whatever pause state they found.
+  // Each holds the game still, then hands back whatever pause state it found.
   useEffect(() => {
     if (!blocked) return;
     const was = game.paused;
@@ -74,6 +78,21 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [confirmRestart]);
+
+  // A new run asks the server for its leaderboard ticket (id and seed) straight away.
+  useEffect(() => {
+    if (!game.wantsTicket) return;
+    let live = true;
+    openRun(map.id)
+      .then((r) => live && game.adoptTicket(r.id, r.seed))
+      .catch(() => live && game.noTicket());
+    return () => {
+      live = false;
+    };
+  }, [game, map.id]);
+
+  const openBoard = (highlight?: string) => setBoard({ highlight });
+  const closeBoard = useCallback(() => setBoard(null), []);
 
   useEffect(() => {
     if (paused) return;
@@ -148,6 +167,9 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               <PiBookOpenTextFill />
             </Btn>
           )}
+          <Btn onClick={() => openBoard()} aria-label="Leaderboard" title="Leaderboard">
+            <PiRankingFill />
+          </Btn>
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
@@ -195,6 +217,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                   <PiSkullFill className="modal-icon red" />
                   <h2>The portal has fallen</h2>
                   <p>You held out for {Math.max(0, game.wave - 1)} waves and destroyed {game.kills} foes.</p>
+                  <SubmitScore game={game} onShowBoard={openBoard} />
                   <div className="modal-actions">
                     {game.endless ? (
                       game.hasNextRound ? (
@@ -222,6 +245,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                     {!game.hasNextRound && ' Every round is beaten.'}
                   </p>
                   {game.hasNextRound && <UnlockList round={game.round + 1} />}
+                  <SubmitScore game={game} onShowBoard={openBoard} />
                   <div className="modal-actions">
                     {game.hasNextRound ? (
                       <Btn variant="primary" onClick={onNextRound}><PiArrowRightBold /> Round {game.round + 2}</Btn>
@@ -324,6 +348,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           </section>
         </aside>
       </div>
+
+      {board && <Leaderboard initialMap={map.id} highlight={board.highlight} onClose={closeBoard} />}
     </div>
   );
 }

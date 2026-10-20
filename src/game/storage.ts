@@ -78,6 +78,17 @@ export interface Snapshot {
   autoWave: boolean;
   towers: TowerSave[];
   mines?: MineSave[]; // missing from saves made before mines were kept
+  // Present when the round can be rebuilt by replaying its log, which keeps it eligible for
+  // the leaderboard. Older saves only have the tower list above.
+  run?: RunSave;
+}
+
+export interface RunSave {
+  v: number; // SIM_VERSION the run was recorded on
+  id: string | null; // leaderboard run id from the server, null if the run is unranked
+  seed: number;
+  log: number[][];
+  tick: number;
 }
 
 export interface Progress {
@@ -134,6 +145,26 @@ export function loadStorySeen(): number {
 export function saveStorySeen(round: number) {
   try {
     localStorage.setItem(STORY_KEY, String(round));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/* ---------------------------------------------------------- leaderboard */
+
+const HANDLE_KEY = 'lastpixel.handle.v1';
+
+export function loadHandle(): string {
+  try {
+    return localStorage.getItem(HANDLE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveHandle(handle: string) {
+  try {
+    localStorage.setItem(HANDLE_KEY, handle);
   } catch {
     /* storage unavailable */
   }

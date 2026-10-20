@@ -1,9 +1,8 @@
 import { COLS, H, PAL, ROWS, STEP, TAU, TILE, W } from './constants';
-import { MAPS, type MapDef, pathTiles, tileKey } from './maps';
+import type { MapDef } from './maps';
 import {
-  ENEMIES, SELL_RATE, TARGET_MODES, TOTAL_WAVES, TOWERS, TOWER_KEYS, TOWER_ORDER,
-  buffDmg, buffRate, buildWave, hpScale, isBoss, isUnlocked, killGold, waveBonus,
-  type EnemyType, type SpawnGroup, type TargetMode, type TowerLevel, type TowerType,
+  ENEMIES, TARGET_MODES, TOWERS, TOWER_KEYS, TOWER_ORDER, isBoss, isUnlocked,
+  type TargetMode, type TowerType,
 } from './data';
 import {
   ENEMY_SPRITES, drawText, drawTowerSprite, fillDisc, pixelCircle, plotLine, textWidth,
@@ -11,143 +10,59 @@ import {
 import { buildBackground } from './background';
 import { sfx } from './audio';
 import { loadProgress, saveBest, saveProgress, type Snapshot } from './storage';
+import { Rng, randomSeed } from './rng';
+import { AUTO_DELAY, SIM_VERSION, Sim, replayInto, type Command, type Enemy, type SimEvent } from './sim';
 
-export interface Tower {
-  id: number;
-  type: TowerType;
-  tx: number;
-  ty: number;
-  x: number;
-  y: number;
-  level: number;
-  cd: number;
-  angle: number;
-  mode: TargetMode;
-  spent: number;
-  recoil: number;
-  pulse: number;
-  kills: number;
-  dmgDone: number;
-  charge: number; // Lancer heat, 0..1
-  lockId: number; // Lancer target
-  firing: number; // time left to draw a continuous beam
-  jam: number; // seconds left shut down by the Eraser
-}
+export type { Enemy, GameStatus, Tower } from './sim';
 
-export interface Enemy {
-  id: number;
-  type: EnemyType;
-  x: number;
-  y: number;
-  dist: number;
-  hp: number;
-  maxHp: number;
-  speed: number;
-  armor: number;
-  gold: number;
-  dmg: number;
-  slow: number;
-  slowT: number;
-  flash: number;
-  anim: number;
-  face: number;
-  off: number;
-  alive: boolean;
-  w: number;
-  h: number;
-  burn: number; // damage per second
-  burnT: number;
-  burnSrc?: Tower;
-  stunT: number;
-  kb: number; // knockback still to apply, in pixels
-  kbGuard: number; // distance to walk past before Quake can knock back or stun again
-  abilT: number; // countdown to the next heal, blink or jam pulse
-}
-
-interface Bullet { kind: 'bullet'; x: number; y: number; tx: number; ty: number; target: Enemy; dmg: number; speed: number; src: Tower; dead?: boolean }
-interface Shell { kind: 'shell'; sx: number; sy: number; tx: number; ty: number; t: number; dur: number; dmg: number; splash: number; src: Tower; dead?: boolean }
-type Proj = Bullet | Shell;
-interface Mine { x: number; y: number; sx: number; sy: number; t: number; dur: number; dmg: number; splash: number; src: Tower; dead?: boolean }
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; grav: number }
 interface Ring { x: number; y: number; r0: number; r1: number; life: number; max: number; color: string }
 interface Beam { x0: number; y0: number; x1: number; y1: number; life: number; max: number }
 interface Arc { pts: { x: number; y: number }[]; life: number; max: number }
 interface Floater { x: number; y: number; text: string; life: number; max: number; color: string }
 
-export type GameStatus = 'playing' | 'won' | 'lost';
 export interface Banner { id: number; text: string; sub?: string; danger?: boolean }
 
-let uid = 0;
-// Ground a foe must gain past its last Quake hit before the next slam can push it back again.
-const KNOCK_MARGIN = 8;
-// Seconds Auto waits before sending the next wave, so there is always time to build.
-const AUTO_DELAY = 2.5;
+let bannerId = 0;
+// Cosmetic randomness only. Anything that changes the outcome uses the sim's seeded rng.
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)];
 
-function turnToward(a: number, b: number, max: number) {
-  let d = b - a;
-  while (d > Math.PI) d -= TAU;
-  while (d < -Math.PI) d += TAU;
-  return a + Math.max(-max, Math.min(max, d));
-}
-
-function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const l2 = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2));
-  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
-}
-
-export class Game {
-  readonly map: MapDef;
-  readonly pathSet = new Set<number>();
-  readonly portal: { x: number; y: number; tx: number; ty: number };
-  private pts: { x: number; y: number }[];
-  private cum: number[] = [0];
-  private totalLen = 0;
+/*
+ * The playable game: the simulation plus everything a person sees, hears and touches. Input
+ * goes through act() so it is recorded for leaderboard verification, and the sim's events are
+ * turned into particles, sounds, banners and saves here.
+ */
+export class Game extends Sim {
   private bg: HTMLCanvasElement;
   private decals: HTMLCanvasElement;
   private dctx: CanvasRenderingContext2D;
 
-  towers: Tower[] = [];
-  enemies: Enemy[] = [];
-  private projs: Proj[] = [];
-  private mines: Mine[] = [];
-  private buffs = new Map<number, number>();
-  private spotCache = new Map<number, { range: number; spots: number[] }>();
   private parts: Particle[] = [];
   private rings: Ring[] = [];
   private beams: Beam[] = [];
   private arcs: Arc[] = [];
   private floaters: Floater[] = [];
 
-  gold: number;
-  lives: number;
-  readonly maxLives: number;
-  readonly round: number;
-  wave = 0;
-  waveActive = false;
-  status: GameStatus = 'playing';
   speed = 1;
   paused = false;
-  autoWave = false;
-  endless = false;
-  kills = 0;
   placing: TowerType | null = null;
   selectedId: number | null = null;
   banner: Banner | null = null;
   version = 0;
+
+  // Leaderboard run id from the server. Null until a ticket arrives, or for good if it can't be ranked.
+  runId: string | null = null;
+  // Why this run can't go on the leaderboard, if it can't.
+  unranked: string | null = null;
+  // False once the round no longer matches its log (restored from an old save), so it can't be replayed.
+  private replayable = true;
 
   private hover: { tx: number; ty: number } | null = null;
   private mouse: { x: number; y: number } | null = null;
   // Enemy shown in the info card: hovered with a mouse, or tapped (pinned) on touch.
   inspectId = 0;
   private inspectPinned = false;
-  private spawns: (SpawnGroup & { spawned: number })[] = [];
-  private waveT = 0;
-  private autoT = 0;
   private rt = 0;
   private shake = 0;
   private hurt = 0;
@@ -164,28 +79,18 @@ export class Game {
   private reached = 0;
 
   constructor(map: MapDef, snap?: Snapshot) {
-    this.map = map;
-    this.round = Math.max(0, MAPS.indexOf(map));
-    this.gold = map.startGold;
-    this.lives = this.maxLives = map.lives;
-    this.pts = map.path.map(([x, y]) => ({ x: x * TILE + TILE / 2, y: y * TILE + TILE / 2 }));
-    for (let i = 1; i < this.pts.length; i++) {
-      const a = this.pts[i - 1];
-      const b = this.pts[i];
-      this.cum.push(this.cum[i - 1] + Math.hypot(b.x - a.x, b.y - a.y));
-    }
-    this.totalLen = this.cum[this.cum.length - 1];
-    for (const k of pathTiles(map)) this.pathSet.add(k);
-    const [ex, ey] = map.path[map.path.length - 1];
-    this.portal = { tx: ex, ty: ey, x: ex * TILE + 8, y: ey * TILE + 8 };
+    const save = snap?.mapId === map.id ? snap : undefined;
+    const run = save?.run?.v === SIM_VERSION ? save.run : undefined;
+    super(map, run?.seed ?? randomSeed());
     this.bg = buildBackground(map, this.pathSet);
     this.decals = document.createElement('canvas');
     this.decals.width = W;
     this.decals.height = H;
     this.dctx = this.decals.getContext('2d')!;
     this.reached = loadProgress().unlocked;
-    if (snap?.mapId === map.id) this.restore(snap);
-    else this.checkpoint();
+    if (save) this.resume(save);
+    this.live = true;
+    this.checkpoint();
     const fresh = TOWER_ORDER.filter((t) => TOWERS[t].unlock === this.round).map((t) => TOWERS[t].name);
     this.intro = [
       `Round ${this.round + 1}`,
@@ -195,7 +100,23 @@ export class Game {
 
   /* ------------------------------------------------------------ save data */
 
-  private restore(s: Snapshot) {
+  // Rebuilds a saved round by replaying its log, which keeps it verifiable. Older saves (or a
+  // log that no longer replays to the saved state) fall back to restoring the towers directly.
+  private resume(s: Snapshot) {
+    const run = s.run;
+    if (run?.v === SIM_VERSION) {
+      const res = replayInto(this, run.log, run.tick);
+      if (res.ok && this.wave === s.wave && this.gold === s.gold && this.lives === s.lives && this.kills === s.kills) {
+        this.runId = run.id;
+        if (!run.id) this.unranked = 'This run started offline, so it can’t be ranked.';
+        this.speed = s.speed;
+        this.autoT = AUTO_DELAY;
+        return;
+      }
+    }
+    this.reset(randomSeed());
+    this.replayable = false;
+    this.unranked = 'This run was saved by an older version of the game, so it can’t be ranked.';
     this.wave = s.wave;
     this.gold = s.gold;
     this.lives = Math.min(this.maxLives, s.lives);
@@ -203,12 +124,13 @@ export class Game {
     this.endless = s.endless;
     this.speed = s.speed;
     this.autoWave = s.autoWave;
+    // Give the player a moment before Auto sends the next wave.
     this.autoT = AUTO_DELAY;
     for (const o of s.towers) {
       const type = o.type as TowerType;
       if (!TOWERS[type] || !isUnlocked(type, this.round) || !this.canBuild(o.tx, o.ty)) continue;
       this.towers.push({
-        id: ++uid, type, tx: o.tx, ty: o.ty, x: o.tx * TILE + 8, y: o.ty * TILE + 8,
+        id: this.nextId(), type, tx: o.tx, ty: o.ty, x: o.tx * TILE + 8, y: o.ty * TILE + 8,
         level: Math.min(3, Math.max(1, o.level)), cd: 0.2, angle: -Math.PI / 2,
         mode: TARGET_MODES.includes(o.mode as TargetMode) ? (o.mode as TargetMode) : 'first',
         spent: o.spent, recoil: 0, pulse: 0, kills: o.kills, dmgDone: o.dmgDone, charge: 0, lockId: 0, firing: 0, jam: 0,
@@ -224,7 +146,7 @@ export class Game {
 
   // Saves the round between waves. Reloading mid-wave replays that wave from its start.
   private checkpoint() {
-    if (this.waveActive || this.status !== 'playing') return;
+    if (!this.live || this.waveActive || this.status !== 'playing') return;
     this.save(this.round, {
       mapId: this.map.id, wave: this.wave, gold: this.gold, lives: this.lives, kills: this.kills,
       endless: this.endless, speed: this.speed, autoWave: this.autoWave,
@@ -232,6 +154,11 @@ export class Game {
         { type, tx, ty, level, mode, spent, kills, dmgDone }
       )),
       mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
+      // Replaying the log rebuilds everything above exactly, mines included. The plain lists
+      // are kept for saves that can no longer be replayed.
+      run: this.replayable
+        ? { v: SIM_VERSION, id: this.runId, seed: this.rng.seed, log: this.log, tick: this.tick }
+        : undefined,
     });
   }
 
@@ -240,25 +167,37 @@ export class Game {
     this.reached = Math.max(this.reached, saveProgress({ round, snapshot }).unlocked);
   }
 
-  get hasNextRound() {
-    return this.round < MAPS.length - 1;
-  }
-
-  unlocked(type: TowerType) {
-    return isUnlocked(type, this.round);
-  }
-
-  buffOf(t: Tower) {
-    return this.buffs.get(t.id) ?? 0;
-  }
-
-  get nextRound() {
-    return Math.min(this.round + 1, MAPS.length - 1);
-  }
-
   // The next round is open: beaten this time, or on an earlier run of this round.
   get nextUnlocked() {
     return this.hasNextRound && this.reached > this.round;
+  }
+
+  // True while the run is still waiting for a leaderboard ticket it could use.
+  get wantsTicket() {
+    return this.replayable && !this.runId && !this.unranked;
+  }
+
+  // Takes the server's seed for this run. Only possible before the first random draw: until
+  // then the seed has had no effect, so the run plays out exactly as if it started with it.
+  adoptTicket(id: string, seed: number) {
+    if (!this.wantsTicket) return false;
+    if (this.rng.draws > 0) {
+      this.unranked = 'The leaderboard was unreachable when this run started, so it can’t be ranked.';
+      this.touch();
+      return false;
+    }
+    this.rng = new Rng(seed);
+    this.runId = id;
+    this.checkpoint();
+    this.touch();
+    return true;
+  }
+
+  // No ticket is coming (offline, or the leaderboard is down).
+  noTicket() {
+    if (!this.wantsTicket) return;
+    this.unranked = 'The leaderboard was unreachable when this run started, so it can’t be ranked.';
+    this.touch();
   }
 
   /* ------------------------------------------------------------ lifecycle */
@@ -308,6 +247,10 @@ export class Game {
     this.dirty = true;
   }
 
+  protected changed() {
+    this.dirty = true;
+  }
+
   private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
     const dt = Math.min(0.25, (now - this.lastT) / 1000);
@@ -332,35 +275,31 @@ export class Game {
     }
   };
 
+  update(dt: number) {
+    if (this.status !== 'playing') return;
+    super.update(dt);
+    // Skipped while a saved run is fast-forwarded on load.
+    if (this.live) this.updateFx(dt);
+  }
+
   /* --------------------------------------------------------------- public */
 
   get inspected(): Enemy | undefined {
     return this.inspectId ? this.enemies.find((e) => e.id === this.inspectId && e.alive) : undefined;
   }
 
-  get selected(): Tower | undefined {
+  get selected() {
     return this.towers.find((t) => t.id === this.selectedId);
   }
 
-  level(t: Tower): TowerLevel {
-    return TOWERS[t.type].levels[t.level - 1];
-  }
-
-  sellValue(t: Tower) {
-    return Math.floor(t.spent * SELL_RATE);
-  }
-
-  remaining() {
-    let n = this.enemies.length;
-    for (const s of this.spawns) n += s.count - s.spawned;
-    return n;
-  }
-
-  nextWavePreview(): { type: EnemyType; count: number }[] {
-    const groups = this.waveActive ? this.spawns : buildWave(this.wave + 1, this.round);
-    const counts = new Map<EnemyType, number>();
-    for (const g of groups) counts.set(g.type, (counts.get(g.type) ?? 0) + g.count);
-    return [...counts.entries()].map(([type, count]) => ({ type, count }));
+  // Every player command goes through here: recorded by the sim, then saved.
+  act(cmd: Command) {
+    const ok = super.act(cmd);
+    if (ok) {
+      this.checkpoint();
+      this.touch();
+    }
+    return ok;
   }
 
   toggleBuild(type: TowerType | null) {
@@ -381,16 +320,7 @@ export class Game {
   }
 
   sendWave() {
-    if (this.waveActive || this.status !== 'playing') return;
-    this.wave++;
-    this.spawns = buildWave(this.wave, this.round).map((g) => ({ ...g, spawned: 0 }));
-    this.waveT = 0;
-    this.waveActive = true;
-    const boss = this.spawns.some((s) => isBoss(s.type));
-    if (this.spawns.some((s) => s.type === 'eraser')) this.showBanner('The Eraser', 'It has come for the Last Pixel', true);
-    else this.showBanner(`Wave ${this.wave}`, boss ? 'A Colossus approaches' : undefined, boss);
-    sfx.play(boss ? 'boss' : 'wave');
-    this.touch();
+    this.act({ c: 'wave' });
   }
 
   togglePause() {
@@ -413,73 +343,34 @@ export class Game {
   }
 
   toggleAuto() {
-    this.autoWave = !this.autoWave;
-    this.autoT = 1.2;
-    this.checkpoint();
-    this.touch();
+    this.act({ c: 'auto', on: !this.autoWave });
   }
 
   continueEndless() {
-    this.endless = true;
-    this.status = 'playing';
-    this.autoT = AUTO_DELAY;
-    this.showBanner('Endless', 'How long can you hold?', true);
-    this.checkpoint();
-    this.touch();
+    this.act({ c: 'endless' });
   }
 
   upgradeSelected() {
     const t = this.selected;
     if (!t || t.level >= 3 || this.status !== 'playing') return;
-    const cost = TOWERS[t.type].levels[t.level].cost;
-    if (this.gold < cost) {
-      sfx.play('error');
-      return;
-    }
-    this.gold -= cost;
-    t.spent += cost;
-    t.level++;
-    this.rings.push({ x: t.x, y: t.y, r0: 3, r1: 12, life: 0.35, max: 0.35, color: PAL.k7 });
-    for (let i = 0; i < 14; i++) this.spark(t.x, t.y, i % 3 === 0 ? PAL.r2 : PAL.k7, 40, -20);
-    sfx.play('upgrade');
-    this.checkpoint();
-    this.touch();
+    if (!this.act({ c: 'upgrade', tx: t.tx, ty: t.ty })) sfx.play('error');
   }
 
   sellSelected() {
     const t = this.selected;
     if (!t || this.status !== 'playing') return;
-    const value = this.sellValue(t);
-    this.gold += value;
-    this.towers = this.towers.filter((o) => o !== t);
-    this.mines = this.mines.filter((m) => m.src !== t);
-    this.selectedId = null;
-    this.floaters.push({ x: t.x, y: t.y - 6, text: `+${value}`, life: 0.9, max: 0.9, color: PAL.k6 });
-    for (let i = 0; i < 16; i++) this.spark(t.x, t.y, pick([PAL.k3, PAL.k4, PAL.k5]), 50, 40);
-    sfx.play('sell');
-    this.checkpoint();
-    this.touch();
+    if (this.act({ c: 'sell', tx: t.tx, ty: t.ty })) this.selectedId = null;
   }
 
   setMode(mode: TargetMode) {
     const t = this.selected;
     if (!t || !TOWERS[t.type].aims) return;
-    t.mode = mode;
-    if (t.type === 'lancer') {
-      // Re-aim under the new mode; keep the heat if it settles on the same foe.
-      const next = this.pickTarget(t, this.level(t).range);
-      if ((next?.id ?? 0) !== t.lockId) {
-        t.lockId = next?.id ?? 0;
-        t.charge = 0;
-      }
-    }
+    this.act({ c: 'mode', tx: t.tx, ty: t.ty, mode });
     sfx.play('click');
-    this.checkpoint();
-    this.touch();
   }
 
   private showBanner(text: string, sub?: string, danger = false) {
-    this.banner = { id: ++uid, text, sub, danger };
+    this.banner = { id: ++bannerId, text, sub, danger };
   }
 
   /* --------------------------------------------------------------- input */
@@ -561,7 +452,11 @@ export class Game {
     this.hover = tile;
     if (this.placing) {
       if (e.pointerType === 'touch' && !same) return;
-      if (this.tryBuild(this.placing, tile.tx, tile.ty) && !e.shiftKey) this.placing = null;
+      if (this.act({ c: 'build', type: this.placing, tx: tile.tx, ty: tile.ty })) {
+        if (!e.shiftKey) this.placing = null;
+      } else {
+        sfx.play('error');
+      }
       this.touch();
       return;
     }
@@ -622,119 +517,208 @@ export class Game {
     }
   };
 
-  private towerAt(tx: number, ty: number) {
-    return this.towers.find((t) => t.tx === tx && t.ty === ty);
-  }
+  /* ------------------------------------------------------------- effects */
 
-  canBuild(tx: number, ty: number) {
-    return tx >= 0 && ty >= 0 && tx < COLS && ty < ROWS && !this.pathSet.has(tileKey(tx, ty)) && !this.towerAt(tx, ty);
-  }
-
-  private tryBuild(type: TowerType, tx: number, ty: number) {
-    const cost = TOWERS[type].levels[0].cost;
-    if (!this.unlocked(type) || !this.canBuild(tx, ty) || this.gold < cost) {
-      sfx.play('error');
-      return false;
-    }
-    this.gold -= cost;
-    const t: Tower = {
-      id: ++uid, type, tx, ty, x: tx * TILE + 8, y: ty * TILE + 8, level: 1, cd: 0.2,
-      angle: -Math.PI / 2, mode: type === 'rail' || type === 'lancer' ? 'strong' : 'first', spent: cost,
-      recoil: 0, pulse: 0, kills: 0, dmgDone: 0, charge: 0, lockId: 0, firing: 0, jam: 0,
-    };
-    this.towers.push(t);
-    for (let i = 0; i < 10; i++) this.spark(t.x + rand(-6, 6), t.y + 6, pick([PAL.k3, PAL.k4]), 20, -10);
-    sfx.play('build');
-    this.checkpoint();
-    return true;
-  }
-
-  /* -------------------------------------------------------------- update */
-
-  private pointAt(d: number) {
-    let i = 1;
-    while (i < this.cum.length - 1 && this.cum[i] < d) i++;
-    const a = this.pts[i - 1];
-    const b = this.pts[i];
-    const L = this.cum[i] - this.cum[i - 1];
-    const t = Math.min(1, (d - this.cum[i - 1]) / L);
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, dx: (b.x - a.x) / L, dy: (b.y - a.y) / L };
-  }
-
-  private placeEnemy(e: Enemy) {
-    const p = this.pointAt(e.dist);
-    e.x = p.x - p.dy * e.off;
-    e.y = p.y + p.dx * e.off;
-    if (Math.abs(p.dx) > 0.1) e.face = p.dx < 0 ? -1 : 1;
-  }
-
-  private spawnEnemy(type: EnemyType, dist = 0, hpMul?: number) {
-    const def = ENEMIES[type];
-    const spr = ENEMY_SPRITES[type];
-    const hp = Math.round(def.hp * (hpMul ?? hpScale(this.wave, this.map.difficulty)));
-    const e: Enemy = {
-      id: ++uid, type, x: -20, y: -20, dist: Math.max(0, dist), hp, maxHp: hp,
-      speed: def.speed * rand(0.95, 1.05), armor: def.armor, gold: killGold(def.gold, this.wave),
-      dmg: def.dmg, slow: 0, slowT: 0, flash: 0, anim: Math.random() * 2, face: 1,
-      off: isBoss(type) ? 0 : rand(-2.5, 2.5), alive: true, w: spr.w, h: spr.h,
-      burn: 0, burnT: 0, stunT: 0, kb: 0, kbGuard: 0, abilT: rand(1, 2.5),
-    };
-    this.placeEnemy(e);
-    this.enemies.push(e);
-  }
-
-  private update(dt: number) {
-    if (this.status !== 'playing') return;
-    // spawning
-    if (this.waveActive) {
-      this.waveT += dt;
-      let pending = false;
-      for (const s of this.spawns) {
-        while (s.spawned < s.count && this.waveT >= s.delay + s.spawned * s.interval) {
-          this.spawnEnemy(s.type);
-          s.spawned++;
-        }
-        if (s.spawned < s.count) pending = true;
+  protected emit(ev: SimEvent) {
+    switch (ev.k) {
+      case 'build': {
+        const t = ev.t;
+        for (let i = 0; i < 10; i++) this.spark(t.x + rand(-6, 6), t.y + 6, pick([PAL.k3, PAL.k4]), 20, -10);
+        sfx.play('build');
+        break;
       }
-      if (!pending && this.enemies.length === 0) this.endWave();
-    } else if (this.autoWave && this.status === 'playing') {
-      this.autoT -= dt;
-      if (this.autoT <= 0) this.sendWave();
+      case 'upgrade': {
+        const t = ev.t;
+        this.rings.push({ x: t.x, y: t.y, r0: 3, r1: 12, life: 0.35, max: 0.35, color: PAL.k7 });
+        for (let i = 0; i < 14; i++) this.spark(t.x, t.y, i % 3 === 0 ? PAL.r2 : PAL.k7, 40, -20);
+        sfx.play('upgrade');
+        break;
+      }
+      case 'sell': {
+        const t = ev.t;
+        this.floaters.push({ x: t.x, y: t.y - 6, text: `+${ev.value}`, life: 0.9, max: 0.9, color: PAL.k6 });
+        for (let i = 0; i < 16; i++) this.spark(t.x, t.y, pick([PAL.k3, PAL.k4, PAL.k5]), 50, 40);
+        sfx.play('sell');
+        break;
+      }
+      case 'wave':
+        if (ev.eraser) this.showBanner('The Eraser', 'It has come for the Last Pixel', true);
+        else this.showBanner(`Wave ${this.wave}`, ev.boss ? 'A Colossus approaches' : undefined, ev.boss);
+        sfx.play(ev.boss ? 'boss' : 'wave');
+        break;
+      case 'endless':
+        this.showBanner('Endless', 'How long can you hold?', true);
+        break;
+      case 'heal':
+        for (const o of ev.healed) {
+          for (let i = 0; i < 3; i++) this.parts.push({ x: o.x + rand(-3, 3), y: o.y - 2, vx: 0, vy: -16, life: 0.5, max: 0.5, color: PAL.k7, grav: 0 });
+        }
+        this.rings.push({ x: ev.e.x, y: ev.e.y, r0: 2, r1: 24, life: 0.4, max: 0.4, color: PAL.k5 });
+        break;
+      case 'blink': {
+        const e = ev.e;
+        for (let i = 0; i < 6; i++) this.parts.push({ x: e.x + rand(-3, 3), y: e.y + rand(-3, 3), vx: 0, vy: 0, life: 0.25, max: 0.25, color: pick([PAL.r2, PAL.k6]), grav: 0 });
+        break;
+      }
+      case 'jam':
+        this.rings.push({ x: ev.e.x, y: ev.e.y, r0: 6, r1: 48, life: 0.7, max: 0.7, color: PAL.k5 });
+        if (ev.hit) sfx.play('jam');
+        break;
+      case 'beacon':
+        this.rings.push({ x: ev.t.x, y: ev.t.y, r0: 3, r1: ev.range, life: 0.7, max: 0.7, color: PAL.r1 });
+        break;
+      case 'frost':
+        this.rings.push({ x: ev.t.x, y: ev.t.y, r0: 4, r1: ev.range, life: 0.4, max: 0.4, color: PAL.k6 });
+        sfx.play('frost');
+        break;
+      case 'shoot':
+        this.parts.push({ x: ev.x, y: ev.y, vx: 0, vy: 0, life: 0.05, max: 0.05, color: PAL.k7, grav: 0 });
+        sfx.play('shoot');
+        break;
+      case 'mortar':
+        for (let i = 0; i < 4; i++) this.spark(ev.x, ev.y, pick([PAL.k4, PAL.k5]), 20, -10);
+        sfx.play('thump');
+        break;
+      case 'rail': {
+        const { x0, y0, x1, y1 } = ev;
+        this.beams.push({ x0, y0, x1, y1, life: 0.3, max: 0.3 });
+        for (let i = 0; i < 10; i++) {
+          const k = Math.random();
+          this.parts.push({
+            x: x0 + (x1 - x0) * k, y: y0 + (y1 - y0) * k, vx: rand(-8, 8), vy: rand(-8, 8),
+            life: rand(0.2, 0.5), max: 0.5, color: pick([PAL.k6, PAL.r2]), grav: 0,
+          });
+        }
+        this.shake = Math.max(this.shake, 1.2);
+        sfx.play('rail');
+        break;
+      }
+      case 'tesla':
+        this.arcs.push({ pts: jagged(ev.pts), life: 0.16, max: 0.16 });
+        sfx.play('zap');
+        break;
+      case 'flame': {
+        const { t, range, cone } = ev;
+        const nx = t.x + Math.cos(t.angle) * 8;
+        const ny = t.y + Math.sin(t.angle) * 8;
+        for (let i = 0; i < 5; i++) {
+          const a = t.angle + rand(-cone, cone) * 0.85;
+          const sp = rand(70, 120) * (range / 26);
+          const life = rand(0.18, 0.32);
+          this.parts.push({
+            x: nx, y: ny, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life,
+            color: pick([PAL.k7, PAL.r3, PAL.r3, PAL.r2, PAL.r2, PAL.r1]), grav: -20,
+          });
+        }
+        sfx.play('flame');
+        break;
+      }
+      case 'laser': {
+        const { t, target } = ev;
+        if (Math.random() < 0.35 + t.charge * 0.4) this.spark(target.x, target.y, pick([PAL.k7, PAL.r3, PAL.r2]), 30 + t.charge * 40, 0);
+        sfx.play('laser');
+        break;
+      }
+      case 'mine':
+        sfx.play('mine');
+        break;
+      case 'slam': {
+        const { t, range } = ev;
+        this.rings.push({ x: t.x, y: t.y, r0: 5, r1: range, life: 0.45, max: 0.45, color: PAL.k7 });
+        this.rings.push({ x: t.x, y: t.y, r0: 3, r1: range * 0.65, life: 0.6, max: 0.6, color: PAL.k4 });
+        for (let i = 0; i < 24; i++) {
+          const a = rand(0, TAU);
+          const r = rand(6, range);
+          this.parts.push({ x: t.x + Math.cos(a) * r, y: t.y + Math.sin(a) * r, vx: rand(-6, 6), vy: rand(-30, -10), life: 0.4, max: 0.4, color: pick([PAL.k3, PAL.k4, PAL.k5]), grav: 80 });
+        }
+        this.shake = Math.max(this.shake, 2);
+        sfx.play('quake');
+        break;
+      }
+      case 'bulletHit':
+        for (let i = 0; i < 3; i++) this.spark(ev.x, ev.y, pick([PAL.k7, PAL.r3]), 40, 0);
+        break;
+      case 'explode': {
+        const { x, y, splash } = ev;
+        this.rings.push({ x, y, r0: 2, r1: splash, life: 0.28, max: 0.28, color: PAL.k6 });
+        for (let i = 0; i < 16; i++) this.spark(x, y, pick([PAL.k5, PAL.k6, PAL.k7, PAL.r2, PAL.r3]), 90, 30);
+        this.dctx.fillStyle = PAL.k1;
+        for (let i = 0; i < 10; i++) this.dctx.fillRect(Math.round(x + rand(-5, 5)), Math.round(y + rand(-5, 5)), 1, 1);
+        this.shake = Math.max(this.shake, 1.5);
+        sfx.play('boom');
+        break;
+      }
+      case 'kill': {
+        const { e, gold, bounty } = ev;
+        const boss = isBoss(e.type);
+        this.floaters.push({ x: e.x, y: e.y - e.h / 2 - 3, text: `+${gold}`, life: 0.8, max: 0.8, color: bounty ? PAL.k7 : PAL.k5 });
+        for (let i = 0; i < (boss ? 70 : 12); i++) {
+          this.spark(e.x, e.y, pick([PAL.r1, PAL.r2, PAL.r2, PAL.r3, PAL.k5, PAL.k0]), boss ? 120 : 60, 60);
+        }
+        const spread = boss ? 10 : 4;
+        for (let i = 0; i < (boss ? 60 : 7); i++) {
+          this.dctx.fillStyle = pick([PAL.r0, PAL.r1, PAL.r1, PAL.r2]);
+          this.dctx.fillRect(Math.round(e.x + rand(-spread, spread)), Math.round(e.y + rand(-spread, spread)), 1, 1);
+        }
+        if (boss) {
+          this.shake = 8;
+          this.rings.push({ x: e.x, y: e.y, r0: 4, r1: 40, life: 0.6, max: 0.6, color: PAL.r2 });
+          this.showBanner(`${ENEMIES[e.type].name} slain`, `+${gold} gold`);
+          sfx.play('bigdie');
+        } else {
+          sfx.play('die');
+        }
+        break;
+      }
+      case 'leak':
+        this.shake = Math.max(this.shake, 3 + ev.e.dmg * 0.5);
+        this.hurt = 0.5;
+        for (let i = 0; i < 20; i++) this.spark(this.portal.x, this.portal.y, pick([PAL.r2, PAL.r3, PAL.k7]), 80, 0);
+        sfx.play('leak');
+        break;
+      case 'waveEnd': {
+        for (const h of ev.earners) {
+          const income = this.level(h).income ?? 0;
+          h.pulse = 0.6;
+          this.floaters.push({ x: h.x, y: h.y - 10, text: `+${income}`, life: 1.2, max: 1.2, color: PAL.k7 });
+          for (let i = 0; i < 10; i++) this.spark(h.x, h.y - 4, pick([PAL.k6, PAL.k7, PAL.r3]), 40, 60);
+        }
+        if (ev.earners.length) sfx.play('coin');
+        saveBest(this.map.id, this.wave);
+        if (this.status === 'playing') {
+          this.showBanner('Wave clear', `+${ev.bonus} gold`);
+          sfx.play('clear');
+          this.checkpoint();
+        }
+        break;
+      }
+      case 'end':
+        this.placing = null;
+        if (ev.status === 'won') {
+          this.save(this.nextRound);
+          sfx.play('win');
+        } else {
+          saveBest(this.map.id, this.wave - 1);
+          // Falling in endless still counts the round as beaten.
+          this.save(this.endless ? this.nextRound : this.round);
+          sfx.play('lose');
+        }
+        break;
     }
+  }
 
-    // enemies
+  private spark(x: number, y: number, color: string, speed: number, grav: number) {
+    const a = rand(0, TAU);
+    const s = rand(0.3, 1) * speed;
+    const life = rand(0.25, 0.7);
+    this.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, color, grav });
+  }
+
+  private updateFx(dt: number) {
     for (const e of this.enemies) {
-      if (!e.alive) continue;
-      if (e.slowT > 0) e.slowT -= dt;
-      let spd = e.speed * (e.slowT > 0 ? 1 - e.slow : 1);
-      if (e.stunT > 0) {
-        e.stunT -= dt;
-        spd = 0;
+      if (e.burnT > 0 && Math.random() < dt * 14) {
+        this.parts.push({ x: e.x + rand(-3, 3), y: e.y + rand(-3, 2), vx: rand(-4, 4), vy: -18, life: 0.3, max: 0.3, color: pick([PAL.r2, PAL.r3, PAL.k7]), grav: 0 });
       }
-      if (e.kb > 0) {
-        const k = Math.min(e.kb, 160 * dt);
-        e.dist = Math.max(0, e.dist - k);
-        e.kb -= k;
-        spd = 0;
-      }
-      e.dist += spd * dt;
-      if (e.burnT > 0) {
-        e.burnT -= dt;
-        if (Math.random() < dt * 14) {
-          this.parts.push({ x: e.x + rand(-3, 3), y: e.y + rand(-3, 2), vx: rand(-4, 4), vy: -18, life: 0.3, max: 0.3, color: pick([PAL.r2, PAL.r3, PAL.k7]), grav: 0 });
-        }
-        this.hit(e, e.burn * dt, e.burnSrc, true);
-        if (!e.alive) continue;
-      }
-      e.anim += dt * spd * 0.22;
-      e.flash = Math.max(0, e.flash - dt);
-      if (e.dist >= this.totalLen) {
-        this.leak(e);
-        if (this.status !== 'playing') return;
-        continue;
-      }
-      this.placeEnemy(e);
-      this.enemyAbility(e, dt);
       if (isBoss(e.type) && Math.random() < dt * 20) {
         this.parts.push({ x: e.x + rand(-7, 7), y: e.y + rand(-6, 6), vx: 0, vy: -12, life: 0.5, max: 0.5, color: pick([PAL.r1, PAL.r2]), grav: 0 });
       }
@@ -742,66 +726,6 @@ export class Game {
         this.parts.push({ x: e.x + rand(-4, 4), y: e.y + rand(-4, 4), vx: 0, vy: 6, life: 0.35, max: 0.35, color: PAL.k7, grav: 0 });
       }
     }
-
-    // towers
-    this.buffs.clear();
-    for (const b of this.towers) {
-      if (b.type !== 'beacon' || b.jam > 0) continue;
-      const L = this.level(b);
-      for (const t of this.towers) {
-        if (t === b || t.type === 'beacon' || t.type === 'harvester') continue;
-        if (Math.hypot(t.x - b.x, t.y - b.y) <= L.range) this.buffs.set(t.id, Math.max(this.buffOf(t), L.buff ?? 0));
-      }
-    }
-    for (const t of this.towers) this.updateTower(t, dt);
-
-    // mines
-    for (const m of this.mines) {
-      if (m.t < m.dur) {
-        m.t += dt;
-        continue;
-      }
-      for (const e of this.enemies) {
-        if (e.alive && e.x >= 0 && Math.hypot(e.x - m.x, e.y - m.y) <= 4 + e.w * 0.3) {
-          this.explode(m.x, m.y, m.dmg, m.splash, m.src);
-          m.dead = true;
-          break;
-        }
-      }
-    }
-    this.mines = this.mines.filter((m) => !m.dead);
-
-    // projectiles
-    for (const p of this.projs) {
-      if (p.kind === 'bullet') {
-        if (p.target.alive) {
-          p.tx = p.target.x;
-          p.ty = p.target.y;
-        }
-        const dx = p.tx - p.x;
-        const dy = p.ty - p.y;
-        const d = Math.hypot(dx, dy);
-        const step = p.speed * dt;
-        if (d <= step + 1) {
-          if (p.target.alive) {
-            this.hit(p.target, p.dmg, p.src);
-            for (let i = 0; i < 3; i++) this.spark(p.tx, p.ty, pick([PAL.k7, PAL.r3]), 40, 0);
-          }
-          p.dead = true;
-        } else {
-          p.x += (dx / d) * step;
-          p.y += (dy / d) * step;
-        }
-      } else {
-        p.t += dt;
-        if (p.t >= p.dur) {
-          this.explode(p.tx, p.ty, p.dmg, p.splash, p.src);
-          p.dead = true;
-        }
-      }
-    }
-    this.projs = this.projs.filter((p) => !p.dead);
-    this.enemies = this.enemies.filter((e) => e.alive);
 
     // portal ambience
     this.portalT -= dt;
@@ -816,7 +740,6 @@ export class Game {
       });
     }
 
-    // effects
     for (const p of this.parts) {
       p.vy += p.grav * dt;
       p.vx *= 1 - 2.5 * dt;
@@ -839,424 +762,6 @@ export class Game {
     this.floaters = this.floaters.filter((f) => f.life > 0);
     this.shake = Math.max(0, this.shake - dt * 12);
     this.hurt = Math.max(0, this.hurt - dt);
-  }
-
-  // Mender heals, Glitch blinks forward, Eraser jams towers.
-  private enemyAbility(e: Enemy, dt: number) {
-    const def = ENEMIES[e.type];
-    if (!def.heal && !def.blink && !def.jam) return;
-    if (e.stunT > 0) return;
-    e.abilT -= dt;
-    if (e.abilT > 0) return;
-    if (def.heal) {
-      e.abilT = 2.5;
-      for (const o of this.enemies) {
-        if (!o.alive || o.hp >= o.maxHp || Math.hypot(o.x - e.x, o.y - e.y) > 24) continue;
-        o.hp = Math.min(o.maxHp, o.hp + Math.min(o.maxHp * def.heal, def.healCap ?? Infinity));
-        for (let i = 0; i < 3; i++) this.parts.push({ x: o.x + rand(-3, 3), y: o.y - 2, vx: 0, vy: -16, life: 0.5, max: 0.5, color: PAL.k7, grav: 0 });
-      }
-      this.rings.push({ x: e.x, y: e.y, r0: 2, r1: 24, life: 0.4, max: 0.4, color: PAL.k5 });
-    } else if (def.blink) {
-      e.abilT = 2.6;
-      for (let i = 0; i < 6; i++) this.parts.push({ x: e.x + rand(-3, 3), y: e.y + rand(-3, 3), vx: 0, vy: 0, life: 0.25, max: 0.25, color: pick([PAL.r2, PAL.k6]), grav: 0 });
-      e.dist = Math.min(this.totalLen - 1, e.dist + def.blink);
-      this.placeEnemy(e);
-    } else if (def.jam) {
-      e.abilT = 5;
-      let hit = false;
-      for (const t of this.towers) {
-        if (Math.hypot(t.x - e.x, t.y - e.y) > 48) continue;
-        t.jam = Math.max(t.jam, def.jam);
-        hit = true;
-      }
-      this.rings.push({ x: e.x, y: e.y, r0: 6, r1: 48, life: 0.7, max: 0.7, color: PAL.k5 });
-      if (hit) sfx.play('jam');
-    }
-  }
-
-  private inRange(t: Tower, e: Enemy, range: number) {
-    const r = range + e.w * 0.4;
-    const dx = e.x - t.x;
-    const dy = e.y - t.y;
-    return dx * dx + dy * dy <= r * r;
-  }
-
-  private pickTarget(t: Tower, range: number): Enemy | null {
-    let best: Enemy | null = null;
-    let score = -Infinity;
-    for (const e of this.enemies) {
-      if (!e.alive || e.x < 0 || !this.inRange(t, e, range)) continue;
-      let s: number;
-      switch (t.mode) {
-        case 'first': s = e.dist; break;
-        case 'last': s = -e.dist; break;
-        case 'strong': s = e.hp * 1000 + e.dist; break;
-        case 'close': s = -Math.hypot(e.x - t.x, e.y - t.y); break;
-      }
-      if (s > score) {
-        score = s;
-        best = e;
-      }
-    }
-    return best;
-  }
-
-  private heldTarget(t: Tower, range: number): Enemy | null {
-    if (!t.lockId) return null;
-    const e = this.enemies.find((o) => o.id === t.lockId);
-    return e && e.alive && e.x >= 0 && this.inRange(t, e, range) ? e : null;
-  }
-
-  private updateTower(t: Tower, dt: number) {
-    const L = this.level(t);
-    const buff = this.buffOf(t);
-    const dmgMul = buffDmg(buff);
-    const rate = L.rate / buffRate(buff);
-    t.cd -= dt;
-    t.recoil = Math.max(0, t.recoil - dt);
-    t.pulse = Math.max(0, t.pulse - dt);
-    t.firing = Math.max(0, t.firing - dt);
-    if (t.jam > 0) {
-      t.jam -= dt;
-      t.charge = 0;
-      return;
-    }
-
-    switch (t.type) {
-      case 'harvester':
-        return;
-      case 'beacon':
-        if (t.cd <= 0) {
-          t.cd = 1.8;
-          t.pulse = 0.3;
-          this.rings.push({ x: t.x, y: t.y, r0: 3, r1: L.range, life: 0.7, max: 0.7, color: PAL.r1 });
-        }
-        return;
-      case 'mines':
-        this.layMine(t, L, dmgMul, rate);
-        return;
-      case 'quake':
-        this.slam(t, L, dmgMul, rate);
-        return;
-    }
-
-    if (t.type === 'frost') {
-      if (t.cd > 0) return;
-      const hits = this.enemies.filter((e) => e.alive && e.x >= 0 && this.inRange(t, e, L.range));
-      if (!hits.length) return;
-      for (const e of hits) {
-        if (!ENEMIES[e.type].slowImmune) {
-          e.slow = Math.max(e.slowT > 0 ? e.slow : 0, L.slow ?? 0);
-          e.slowT = Math.max(e.slowT, L.slowDur ?? 0);
-        }
-        this.hit(e, L.dmg * dmgMul, t);
-      }
-      this.rings.push({ x: t.x, y: t.y, r0: 4, r1: L.range, life: 0.4, max: 0.4, color: PAL.k6 });
-      t.cd = rate;
-      t.pulse = 0.25;
-      sfx.play('frost');
-      return;
-    }
-
-    // The Lancer holds its lock while the target lives and stays in range, so its heat can build.
-    const target = (t.type === 'lancer' && this.heldTarget(t, L.range)) || this.pickTarget(t, L.range);
-    if (t.type === 'lancer' && (target?.id ?? 0) !== t.lockId) {
-      // Switching targets cools the lens back down.
-      t.lockId = target?.id ?? 0;
-      t.charge = 0;
-    }
-    if (!target) return;
-    const want = Math.atan2(target.y - t.y, target.x - t.x);
-    t.angle = turnToward(t.angle, want, 16 * dt);
-    if (t.type === 'lancer') {
-      t.charge = Math.min(1, t.charge + dt / (L.rampTime ?? 2));
-      t.firing = 0.12;
-    }
-    if (t.cd > 0) return;
-    t.cd = rate;
-    if (t.type !== 'lancer' && t.type !== 'flamer') t.recoil = 0.09;
-    const ca = Math.cos(want);
-    const sa = Math.sin(want);
-
-    switch (t.type) {
-      case 'blaster': {
-        const mx = t.x + ca * 9;
-        const my = t.y + sa * 9;
-        this.projs.push({ kind: 'bullet', x: mx, y: my, tx: target.x, ty: target.y, target, dmg: L.dmg * dmgMul, speed: 230, src: t });
-        this.parts.push({ x: mx, y: my, vx: 0, vy: 0, life: 0.05, max: 0.05, color: PAL.k7, grav: 0 });
-        sfx.play('shoot');
-        break;
-      }
-      case 'mortar': {
-        const mx = t.x + ca * 8;
-        const my = t.y + sa * 8;
-        const d = Math.hypot(target.x - t.x, target.y - t.y);
-        const dur = Math.max(0.35, Math.min(0.9, d / 110));
-        const spd = target.speed * (target.slowT > 0 ? 1 - target.slow : 1);
-        const fp = this.pointAt(Math.min(this.totalLen, target.dist + spd * dur));
-        this.projs.push({ kind: 'shell', sx: mx, sy: my, tx: fp.x, ty: fp.y, t: 0, dur, dmg: L.dmg * dmgMul, splash: L.splash ?? 16, src: t });
-        for (let i = 0; i < 4; i++) this.spark(mx, my, pick([PAL.k4, PAL.k5]), 20, -10);
-        sfx.play('thump');
-        break;
-      }
-      case 'rail': {
-        const x0 = t.x + ca * 11;
-        const y0 = t.y + sa * 11;
-        const x1 = t.x + ca * (L.range + 12);
-        const y1 = t.y + sa * (L.range + 12);
-        for (const e of this.enemies) {
-          if (e.alive && distToSegment(e.x, e.y, x0, y0, x1, y1) <= Math.max(e.w, e.h) / 2 + 1) this.hit(e, L.dmg * dmgMul, t);
-        }
-        this.beams.push({ x0, y0, x1, y1, life: 0.3, max: 0.3 });
-        for (let i = 0; i < 10; i++) {
-          const k = Math.random();
-          this.parts.push({
-            x: x0 + (x1 - x0) * k, y: y0 + (y1 - y0) * k, vx: rand(-8, 8), vy: rand(-8, 8),
-            life: rand(0.2, 0.5), max: 0.5, color: pick([PAL.k6, PAL.r2]), grav: 0,
-          });
-        }
-        this.shake = Math.max(this.shake, 1.2);
-        sfx.play('rail');
-        break;
-      }
-      case 'tesla': {
-        const hitIds = new Set<number>();
-        const pts = [{ x: t.x, y: t.y - 5 }];
-        let cur: Enemy | null = target;
-        let dmg = L.dmg * dmgMul;
-        for (let i = 0; i < (L.chains ?? 1) && cur; i++) {
-          pts.push({ x: cur.x, y: cur.y });
-          hitIds.add(cur.id);
-          this.hit(cur, dmg, t);
-          dmg *= 0.85;
-          let next: Enemy | null = null;
-          let best = 40 * 40;
-          for (const e of this.enemies) {
-            if (!e.alive || hitIds.has(e.id)) continue;
-            const d2 = (e.x - cur.x) ** 2 + (e.y - cur.y) ** 2;
-            if (d2 < best) {
-              best = d2;
-              next = e;
-            }
-          }
-          cur = next;
-        }
-        this.arcs.push({ pts: jagged(pts), life: 0.16, max: 0.16 });
-        sfx.play('zap');
-        break;
-      }
-      case 'flamer': {
-        const cone = L.cone ?? 0.5;
-        for (const e of this.enemies) {
-          if (!e.alive || e.x < 0 || !this.inRange(t, e, L.range)) continue;
-          let d = Math.atan2(e.y - t.y, e.x - t.x) - t.angle;
-          while (d > Math.PI) d -= TAU;
-          while (d < -Math.PI) d += TAU;
-          if (Math.abs(d) > cone + 0.15) continue;
-          this.hit(e, L.dmg * dmgMul, t);
-          const burn = (L.burn ?? 0) * dmgMul;
-          if (e.burnT <= 0 || burn >= e.burn) {
-            e.burn = burn;
-            e.burnSrc = t;
-          }
-          e.burnT = Math.max(e.burnT, L.burnDur ?? 2);
-        }
-        const nx = t.x + Math.cos(t.angle) * 8;
-        const ny = t.y + Math.sin(t.angle) * 8;
-        for (let i = 0; i < 5; i++) {
-          const a = t.angle + rand(-cone, cone) * 0.85;
-          const sp = rand(70, 120) * (L.range / 26);
-          const life = rand(0.18, 0.32);
-          this.parts.push({
-            x: nx, y: ny, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life,
-            color: pick([PAL.k7, PAL.r3, PAL.r3, PAL.r2, PAL.r2, PAL.r1]), grav: -20,
-          });
-        }
-        sfx.play('flame');
-        break;
-      }
-      case 'lancer': {
-        const heat = 1 + ((L.ramp ?? 4) - 1) * t.charge;
-        this.hit(target, L.dmg * heat * dmgMul, t, true);
-        if (Math.random() < 0.35 + t.charge * 0.4) this.spark(target.x, target.y, pick([PAL.k7, PAL.r3, PAL.r2]), 30 + t.charge * 40, 0);
-        sfx.play('laser');
-        break;
-      }
-    }
-  }
-
-  // Every path distance a Minelayer can reach, sampled every few pixels.
-  private mineSpots(t: Tower, range: number) {
-    const hit = this.spotCache.get(t.id);
-    if (hit && hit.range === range) return hit.spots;
-    const spots: number[] = [];
-    for (let d = 0; d <= this.totalLen; d += 3) {
-      const p = this.pointAt(d);
-      if (p.x >= 2 && p.x <= W - 2 && Math.hypot(p.x - t.x, p.y - t.y) <= range) spots.push(d);
-    }
-    this.spotCache.set(t.id, { range, spots });
-    return spots;
-  }
-
-  private layMine(t: Tower, L: TowerLevel, dmgMul: number, rate: number) {
-    if (t.cd > 0) return;
-    if (this.mines.filter((m) => m.src === t).length >= (L.mines ?? 3)) return;
-    const free = this.mineSpots(t, L.range).map((d) => this.pointAt(d))
-      .filter((p) => this.mines.every((m) => Math.hypot(m.x - p.x, m.y - p.y) > 9));
-    if (!free.length) return;
-    const p = pick(free);
-    const x = Math.round(p.x + rand(-2, 2));
-    const y = Math.round(p.y + rand(-2, 2));
-    this.mines.push({ x, y, sx: t.x, sy: t.y - 3, t: 0, dur: 0.45, dmg: L.dmg * dmgMul, splash: L.splash ?? 14, src: t });
-    t.cd = rate;
-    t.recoil = 0.15;
-    sfx.play('mine');
-    // Mines laid between waves are kept too; during a wave this waits for the wave to end.
-    this.checkpoint();
-  }
-
-  private slam(t: Tower, L: TowerLevel, dmgMul: number, rate: number) {
-    if (t.cd > 0) return;
-    const hits = this.enemies.filter((e) => e.alive && e.x >= 0 && this.inRange(t, e, L.range));
-    if (!hits.length) return;
-    for (const e of hits) {
-      // A foe is never knocked back over the same ground twice: until it walks a little past
-      // where the last slam caught it, further slams only hurt. Without this, slow or chilled
-      // foes lose more ground per slam than they gain between slams and are pinned forever.
-      if (e.dist >= e.kbGuard) {
-        const boss = isBoss(e.type);
-        e.kb = Math.max(e.kb, (L.knock ?? 0) * (boss ? 0.25 : 1));
-        if (!boss) e.stunT = Math.max(e.stunT, L.stun ?? 0);
-        e.kbGuard = e.dist + KNOCK_MARGIN;
-      }
-      this.hit(e, L.dmg * dmgMul, t);
-    }
-    this.rings.push({ x: t.x, y: t.y, r0: 5, r1: L.range, life: 0.45, max: 0.45, color: PAL.k7 });
-    this.rings.push({ x: t.x, y: t.y, r0: 3, r1: L.range * 0.65, life: 0.6, max: 0.6, color: PAL.k4 });
-    for (let i = 0; i < 24; i++) {
-      const a = rand(0, TAU);
-      const r = rand(6, L.range);
-      this.parts.push({ x: t.x + Math.cos(a) * r, y: t.y + Math.sin(a) * r, vx: rand(-6, 6), vy: rand(-30, -10), life: 0.4, max: 0.4, color: pick([PAL.k3, PAL.k4, PAL.k5]), grav: 80 });
-    }
-    t.cd = rate;
-    t.pulse = 0.35;
-    this.shake = Math.max(this.shake, 2);
-    sfx.play('quake');
-  }
-
-  // pierce ignores armor (burns and lasers); small steady ticks skip the hit flash.
-  private hit(e: Enemy, amount: number, src?: Tower, pierce = false) {
-    if (!e.alive || amount <= 0) return;
-    const dmg = pierce ? amount : Math.max(amount * 0.25, amount - e.armor);
-    const dealt = Math.min(dmg, e.hp);
-    e.hp -= dmg;
-    if (!pierce || amount >= 3) e.flash = 0.07;
-    if (src) src.dmgDone += dealt;
-    if (e.hp <= 0) this.kill(e, src);
-  }
-
-  private explode(x: number, y: number, dmg: number, splash: number, src: Tower) {
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d <= splash + e.w * 0.3) this.hit(e, dmg * (1 - 0.5 * Math.min(1, d / splash)), src);
-    }
-    this.rings.push({ x, y, r0: 2, r1: splash, life: 0.28, max: 0.28, color: PAL.k6 });
-    for (let i = 0; i < 16; i++) this.spark(x, y, pick([PAL.k5, PAL.k6, PAL.k7, PAL.r2, PAL.r3]), 90, 30);
-    this.dctx.fillStyle = PAL.k1;
-    for (let i = 0; i < 10; i++) this.dctx.fillRect(Math.round(x + rand(-5, 5)), Math.round(y + rand(-5, 5)), 1, 1);
-    this.shake = Math.max(this.shake, 1.5);
-    sfx.play('boom');
-  }
-
-  private kill(e: Enemy, src?: Tower) {
-    if (!e.alive) return;
-    e.alive = false;
-    this.kills++;
-    let bounty = 0;
-    for (const h of this.towers) {
-      if (h.type === 'harvester' && this.inRange(h, e, this.level(h).range)) bounty = Math.max(bounty, this.level(h).bounty ?? 0);
-    }
-    const gold = e.gold + Math.round(e.gold * bounty);
-    this.gold += gold;
-    if (src) src.kills++;
-    this.touch();
-    const boss = isBoss(e.type);
-    this.floaters.push({ x: e.x, y: e.y - e.h / 2 - 3, text: `+${gold}`, life: 0.8, max: 0.8, color: bounty ? PAL.k7 : PAL.k5 });
-    for (let i = 0; i < (boss ? 70 : 12); i++) {
-      this.spark(e.x, e.y, pick([PAL.r1, PAL.r2, PAL.r2, PAL.r3, PAL.k5, PAL.k0]), boss ? 120 : 60, 60);
-    }
-    const spread = boss ? 10 : 4;
-    for (let i = 0; i < (boss ? 60 : 7); i++) {
-      this.dctx.fillStyle = pick([PAL.r0, PAL.r1, PAL.r1, PAL.r2]);
-      this.dctx.fillRect(Math.round(e.x + rand(-spread, spread)), Math.round(e.y + rand(-spread, spread)), 1, 1);
-    }
-    const splits = ENEMIES[e.type].splits;
-    if (splits) {
-      for (let i = 0; i < splits; i++) this.spawnEnemy('runner', e.dist - i * 6, hpScale(this.wave, this.map.difficulty) * 0.7);
-    }
-    if (boss) {
-      this.shake = 8;
-      this.rings.push({ x: e.x, y: e.y, r0: 4, r1: 40, life: 0.6, max: 0.6, color: PAL.r2 });
-      this.showBanner(`${ENEMIES[e.type].name} slain`, `+${gold} gold`);
-      sfx.play('bigdie');
-    } else {
-      sfx.play('die');
-    }
-  }
-
-  private leak(e: Enemy) {
-    e.alive = false;
-    this.lives = Math.max(0, this.lives - e.dmg);
-    this.shake = Math.max(this.shake, 3 + e.dmg * 0.5);
-    this.hurt = 0.5;
-    for (let i = 0; i < 20; i++) this.spark(this.portal.x, this.portal.y, pick([PAL.r2, PAL.r3, PAL.k7]), 80, 0);
-    sfx.play('leak');
-    if (this.lives <= 0 && this.status === 'playing') {
-      this.status = 'lost';
-      this.placing = null;
-      saveBest(this.map.id, this.wave - 1);
-      // Falling in endless still counts the round as beaten.
-      this.save(this.endless ? this.nextRound : this.round);
-      sfx.play('lose');
-    }
-    this.touch();
-  }
-
-  private endWave() {
-    this.waveActive = false;
-    this.spawns = [];
-    let bonus = waveBonus(this.wave);
-    for (const h of this.towers) {
-      const income = h.type === 'harvester' ? this.level(h).income ?? 0 : 0;
-      if (!income) continue;
-      bonus += income;
-      h.pulse = 0.6;
-      this.floaters.push({ x: h.x, y: h.y - 10, text: `+${income}`, life: 1.2, max: 1.2, color: PAL.k7 });
-      for (let i = 0; i < 10; i++) this.spark(h.x, h.y - 4, pick([PAL.k6, PAL.k7, PAL.r3]), 40, 60);
-    }
-    if (bonus > waveBonus(this.wave)) sfx.play('coin');
-    this.gold += bonus;
-    saveBest(this.map.id, this.wave);
-    if (this.wave >= TOTAL_WAVES && !this.endless) {
-      this.status = 'won';
-      this.placing = null;
-      this.save(this.nextRound);
-      sfx.play('win');
-    } else {
-      this.showBanner('Wave clear', `+${bonus} gold`);
-      sfx.play('clear');
-      this.autoT = AUTO_DELAY;
-      this.checkpoint();
-    }
-    this.touch();
-  }
-
-  private spark(x: number, y: number, color: string, speed: number, grav: number) {
-    const a = rand(0, TAU);
-    const s = rand(0.3, 1) * speed;
-    const life = rand(0.25, 0.7);
-    this.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, color, grav });
   }
 
   /* -------------------------------------------------------------- render */
