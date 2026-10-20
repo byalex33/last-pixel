@@ -242,7 +242,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                   <p>
                     {game.status === 'won'
                       ? 'You will play this cleared round again from wave 1.'
-                      : `You will lose wave ${game.wave} and start again from wave 1.`}
+                      : `You are on wave ${game.wave}. Restarting takes you back to wave 1.`}
                   </p>
                   <div className="modal-actions">
                     <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart</Btn>

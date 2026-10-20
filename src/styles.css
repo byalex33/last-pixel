@@ -637,6 +637,12 @@ kbd {
   place-items: center;
   background: rgba(8, 8, 8, 0.72);
   padding: 16px;
+  overflow-y: auto;
+}
+
+/* Auto margins centre the modal but let it scroll from the top when the board is shorter than it. */
+.overlay > .modal {
+  margin: auto;
 }
 
 .modal {
@@ -742,6 +748,20 @@ kbd {
 
 /* Phones held sideways: one-line HUD, board beside a compact tower bar, no page scroll. */
 @media (orientation: landscape) and (max-height: 540px) {
+  .overlay {
+    padding: 8px;
+  }
+
+  .modal {
+    padding: 14px 16px;
+    gap: 8px;
+  }
+
+  .modal.story p {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
   .game {
     height: 100vh;
     height: 100dvh;
