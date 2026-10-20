@@ -852,7 +852,7 @@ export class Game {
       e.abilT = 2.5;
       for (const o of this.enemies) {
         if (!o.alive || o.hp >= o.maxHp || Math.hypot(o.x - e.x, o.y - e.y) > 24) continue;
-        o.hp = Math.min(o.maxHp, o.hp + o.maxHp * def.heal);
+        o.hp = Math.min(o.maxHp, o.hp + Math.min(o.maxHp * def.heal, def.healCap ?? Infinity));
         for (let i = 0; i < 3; i++) this.parts.push({ x: o.x + rand(-3, 3), y: o.y - 2, vx: 0, vy: -16, life: 0.5, max: 0.5, color: PAL.k7, grav: 0 });
       }
       this.rings.push({ x: e.x, y: e.y, r0: 2, r1: 24, life: 0.4, max: 0.4, color: PAL.k5 });

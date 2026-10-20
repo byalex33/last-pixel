@@ -189,6 +189,7 @@ export interface EnemyDef {
   splits?: number;
   boss?: boolean; // resists knockback, cannot be stunned
   heal?: number; // fraction of max health restored to nearby foes each pulse
+  healCap?: number; // most health one pulse restores to a single foe, so bosses and late Brutes cannot outheal towers
   blink?: number; // pixels skipped forward each blink
   jam?: number; // seconds nearby towers are shut down by each pulse
 }
@@ -201,7 +202,7 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   splitter: { name: 'Splitter', trait: 'Splits into runners', desc: 'Bursts into three Runners when killed.', hp: 50, speed: 17, gold: 6, dmg: 2, armor: 0, splits: 3 },
   wisp: { name: 'Wisp', trait: 'Immune to slow', desc: 'A flickering spirit that cold cannot touch.', hp: 34, speed: 27, gold: 6, dmg: 1, armor: 0, slowImmune: true },
   boss: { name: 'Colossus', trait: 'Boss', desc: 'Arrives every 10 waves. Tough, armored and hits the portal hard.', hp: 650, speed: 9, gold: 120, dmg: 6, armor: 3, boss: true },
-  mender: { name: 'Mender', trait: 'Heals the horde', desc: 'Stitches torn Static back together. Kill it first.', hp: 45, speed: 15, gold: 9, dmg: 2, armor: 0, heal: 0.1 },
+  mender: { name: 'Mender', trait: 'Heals the horde', desc: 'Stitches torn Static back together, up to 200 health a pulse. Kill it first.', hp: 45, speed: 15, gold: 9, dmg: 2, armor: 0, heal: 0.1, healCap: 200 },
   glitch: { name: 'Glitch', trait: 'Blinks ahead', desc: 'Skips frames, jumping forward through your lines.', hp: 32, speed: 22, gold: 8, dmg: 2, armor: 0, blink: 22 },
   eraser: { name: 'The Eraser', trait: 'Final boss', desc: 'What the Static saved for last. Everything it passes goes quiet.', hp: 2000, speed: 6, gold: 600, dmg: 20, armor: 6, boss: true, jam: 2.5 },
 };
@@ -234,7 +235,8 @@ export function buildWave(n: number, round = 0): SpawnGroup[] {
   if (round >= 3 && n >= 6) add('mender', 1 + Math.floor((n - 6) / 5), 2.4);
   if (round >= 4 && n >= 4) add('glitch', 2 + Math.floor((n - 4) * 0.5), 0.9);
   if (round >= 4 && n === TOTAL_WAVES) {
-    add('boss', 2, 6);
+    // One Colossus escorts the Eraser. A pair of them broke through even a strong late-game defence.
+    add('boss', 1, 6);
     add('eraser', 1, 1);
   } else if (n % 10 === 0) {
     add('boss', n / 10, 6);
@@ -244,7 +246,8 @@ export function buildWave(n: number, round = 0): SpawnGroup[] {
 
 export function hpScale(n: number, difficulty: number) {
   const k = Math.max(0, n - 1);
-  const endless = n > TOTAL_WAVES ? Math.pow(1.07, n - TOTAL_WAVES) : 1;
+  // By wave 30 the curve already climbs about 10% a wave, so Endless only adds a gentle 3% on top.
+  const endless = n > TOTAL_WAVES ? Math.pow(1.03, n - TOTAL_WAVES) : 1;
   const late = k > 12 ? 0.08 * (k - 12) ** 2 : 0;
   return (1 + 0.16 * k + 0.012 * k * k + late) * difficulty * endless;
 }
