@@ -211,6 +211,12 @@ export class Game {
         spent: o.spent, recoil: 0, pulse: 0, kills: o.kills, dmgDone: o.dmgDone, charge: 0, lockId: 0, firing: 0, jam: 0,
       });
     }
+    // Mines come back already landed; any whose Minelayer did not come back are dropped.
+    for (const m of s.mines ?? []) {
+      const src = this.towers.find((t) => t.type === 'mines' && t.tx === m.tx && t.ty === m.ty);
+      if (!src) continue;
+      this.mines.push({ x: m.x, y: m.y, sx: m.x, sy: m.y, t: 0.45, dur: 0.45, dmg: m.dmg, splash: m.splash, src });
+    }
   }
 
   // Saves the round between waves. Reloading mid-wave replays that wave from its start.
@@ -224,6 +230,7 @@ export class Game {
         towers: this.towers.map(({ type, tx, ty, level, mode, spent, kills, dmgDone }) => (
           { type, tx, ty, level, mode, spent, kills, dmgDone }
         )),
+        mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
       },
     });
   }
@@ -1082,6 +1089,8 @@ export class Game {
     t.cd = rate;
     t.recoil = 0.15;
     sfx.play('mine');
+    // Mines laid between waves are kept too; during a wave this waits for the wave to end.
+    this.checkpoint();
   }
 
   private slam(t: Tower, L: TowerLevel, dmgMul: number, rate: number) {

@@ -54,6 +54,16 @@ export interface TowerSave {
   dmgDone: number;
 }
 
+// A laid mine, tied to its Minelayer by the tower's tile.
+export interface MineSave {
+  tx: number;
+  ty: number;
+  x: number;
+  y: number;
+  dmg: number;
+  splash: number;
+}
+
 // A between-waves checkpoint of the round in progress.
 export interface Snapshot {
   mapId: string;
@@ -65,6 +75,7 @@ export interface Snapshot {
   speed: number;
   autoWave: boolean;
   towers: TowerSave[];
+  mines?: MineSave[]; // missing from saves made before mines were kept
 }
 
 export interface Progress {
