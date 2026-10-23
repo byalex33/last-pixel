@@ -30,6 +30,16 @@ function devApi(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), devApi()],
+// `vite build --mode itch` makes a build for itch.io: relative asset paths, because itch serves
+// the game from a subfolder, and an absolute API address, because itch's domain has no API.
+// Point a fork at its own deployment with VITE_API_BASE.
+export default defineConfig(({ mode }) => {
+  if (mode !== 'itch') return { plugins: [react(), devApi()] };
+  const api = process.env.VITE_API_BASE ?? 'https://lastpixel.alex.codes';
+  return {
+    plugins: [react()],
+    base: './',
+    define: { 'import.meta.env.VITE_API_BASE': JSON.stringify(api) },
+    build: { outDir: 'dist-itch/game', emptyOutDir: true },
+  };
 });

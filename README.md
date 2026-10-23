@@ -113,6 +113,7 @@ Then open http://localhost:5173. The leaderboard works locally too: the dev serv
 | `npm run preview` | Serve the production build locally |
 | `npm run typecheck` | Run the TypeScript compiler without emitting |
 | `npm test` | Run the tests, including replays that check runs are fully deterministic |
+| `npm run build:itch` | Build the itch.io version and zip it as `dist-itch/last-pixel-itch.zip` |
 | `npm run build:trailer` | Build the standalone trailer page into `dist-trailer/` |
 
 The trailer is also available in dev at http://localhost:5173/trailer.html.
@@ -178,6 +179,16 @@ Optional environment variables:
 | `HANDLE_BLOCKLIST` | Comma-separated words that may not appear in handles. |
 
 Without Redis credentials, a deployed site reports the leaderboard as unavailable and the game plays on as normal, with runs marked unranked.
+
+### On itch.io
+
+The itch.io build plays on the same leaderboard as the website. It calls the API on lastpixel.alex.codes, which allows requests from other origins.
+
+1. Run `npm run build:itch`. To point a fork at its own deployment, set `VITE_API_BASE=https://your-site.example` first.
+2. On itch.io, create an **HTML** project and upload `dist-itch/last-pixel-itch.zip` with **This file will be played in the browser** ticked.
+3. Under **Embed options**, set the viewport to about 1280 x 800, enable the fullscreen button and tick **Mobile friendly**.
+
+Saves on itch.io are kept separately from saves on the website, since they live on a different domain.
 
 ## Contributing
 

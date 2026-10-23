@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-trailer/
+dist-itch/
 .vercel/
 .claude/
 *.log

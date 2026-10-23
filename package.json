@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:itch": "tsc --noEmit && vite build --mode itch && node scripts/zip-itch.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build:trailer": "tsc --noEmit && vite build --config vite.trailer.config.ts",

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MAPS } from '../src/game/maps.js';
 import { Sim } from '../src/game/sim.js';
-import { cleanHandle, handleAdmin, handleLeaderboard, handleRun, handleSubmit, type Ctx } from '../server/handlers.js';
+import { cleanHandle, handleAdmin, handleLeaderboard, handleOptions, handleRun, handleSubmit, route, type Ctx } from '../server/handlers.js';
 import { MemoryStore } from '../server/store.js';
 import { playBot } from './bot.js';
 
@@ -112,6 +112,18 @@ describe('leaderboard API', () => {
     const board = await (await handleLeaderboard(new Request('http://x/api/leaderboard?map=gate'), ctx)).json();
     expect(board.entries).toEqual([]);
   }, 60_000);
+
+  it('can be called from other origins, such as an itch.io build', async () => {
+    const res = await handleLeaderboard(new Request('http://x/api/leaderboard?map=gate'), ctx);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    const pre = handleOptions();
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-methods')).toContain('POST');
+    expect(pre.headers.get('access-control-allow-headers')).toContain('content-type');
+    // The dev server answers preflights the same way, but not for the admin endpoint.
+    expect((await route(new Request('http://x/api/submit', { method: 'OPTIONS' }))).status).toBe(204);
+    expect((await route(new Request('http://x/api/admin', { method: 'OPTIONS' }))).status).not.toBe(204);
+  });
 
   it('answers 503 when no store is configured', async () => {
     ctx.store = null;

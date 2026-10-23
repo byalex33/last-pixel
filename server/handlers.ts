@@ -44,8 +44,23 @@ interface Meta {
   at: number;
 }
 
+// Builds of the game hosted elsewhere (itch.io) call this API from another origin. Allowing any
+// origin is safe: the API uses no cookies or sessions, anyone can call it directly anyway, and
+// what protects the leaderboard is replaying every run, not who is asking.
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type',
+  'access-control-max-age': '86400',
+};
+
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...headers } });
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...CORS, ...headers } });
+
+// Answers the browser's CORS preflight, sent before a cross-origin JSON POST.
+export function handleOptions() {
+  return new Response(null, { status: 204, headers: CORS });
+}
 
 const fail = (status: number, error: string) => json({ error }, status);
 
@@ -214,6 +229,8 @@ const ROUTES: Record<string, (req: Request, ctx: Ctx) => Promise<Response>> = {
 
 // Used by the dev server, which has no Vercel functions.
 export async function route(req: Request): Promise<Response> {
-  const fn = ROUTES[new URL(req.url).pathname];
+  const path = new URL(req.url).pathname;
+  const fn = ROUTES[path] as (typeof ROUTES)[string] | undefined;
+  if (fn && req.method === 'OPTIONS' && path !== '/api/admin') return handleOptions();
   return fn ? fn(req, context(req)) : fail(404, 'Not found');
 }

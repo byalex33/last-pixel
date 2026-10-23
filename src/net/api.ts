@@ -10,10 +10,14 @@ export interface SubmitResult {
   best: { wave: number; kills: number } | null;
 }
 
+// Empty on the main site, where the API lives on the same origin. Builds hosted elsewhere
+// (itch.io) set VITE_API_BASE to the site that runs the API, e.g. https://lastpixel.alex.codes.
+const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, init);
+    res = await fetch(BASE + path, init);
   } catch {
     throw new Error('Could not reach the leaderboard. Check your connection.');
   }
