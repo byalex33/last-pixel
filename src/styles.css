@@ -645,6 +645,12 @@ kbd {
   margin: auto;
 }
 
+/* Covers the whole page instead of just the board. */
+.overlay-page {
+  position: fixed;
+  z-index: 50;
+}
+
 .modal {
   --bc: var(--k6);
   padding: 24px;
@@ -682,6 +688,168 @@ kbd {
   flex-wrap: wrap;
   justify-content: center;
   margin-top: 4px;
+}
+
+/* ---------------------------------------------------------- leaderboard */
+
+.board {
+  width: 100%;
+  max-width: 560px;
+  align-items: stretch;
+  text-align: left;
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.board-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+}
+
+.board-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+}
+
+.board-list li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto 72px;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--k2);
+  font-size: 13px;
+}
+
+.board-list li.is-you {
+  background: var(--r0);
+  box-shadow: inset 3px 0 0 var(--r2);
+}
+
+.board-rank {
+  color: var(--k5);
+  text-align: right;
+}
+
+.board-list li:nth-child(-n + 3) .board-rank {
+  color: var(--r3);
+}
+
+.board-handle {
+  color: var(--k7);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-handle:hover {
+  color: var(--r3);
+  text-decoration: underline;
+}
+
+.board-wave,
+.board-kills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.board-msg {
+  padding: 28px 0;
+  text-align: center;
+}
+
+.submit {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--k2);
+  text-align: left;
+}
+
+.submit-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--k5);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.submit-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.handle-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--k0);
+  box-shadow: 0 0 0 2px var(--k3);
+}
+
+.handle-field:focus-within {
+  box-shadow: 0 0 0 2px var(--r3);
+}
+
+.handle-field span {
+  color: var(--k4);
+}
+
+.handle-field input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--k7);
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.modal .submit-result {
+  color: var(--k6);
+}
+
+.submit-result strong {
+  color: var(--r3);
+}
+
+.modal .submit-error {
+  color: var(--r3);
+  font-size: 12px;
+}
+
+.submit-note {
+  max-width: 340px;
 }
 
 /* ------------------------------------------------------------ responsive */
