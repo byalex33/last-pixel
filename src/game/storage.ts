@@ -172,3 +172,50 @@ export function saveTipClosed() {
     /* storage unavailable */
   }
 }
+
+/* --------------------------------------------------------- achievements */
+
+const ACHIEVE_KEY = 'lastpixel.achievements.v1';
+
+export interface AchievementSave {
+  unlocked: string[];
+  kills: number; // foes destroyed across every game
+}
+
+export function loadAchievements(): AchievementSave {
+  try {
+    const raw = localStorage.getItem(ACHIEVE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<AchievementSave>) : null;
+    return {
+      unlocked: Array.isArray(parsed?.unlocked) ? parsed.unlocked.filter((id) => typeof id === 'string') : [],
+      kills: typeof parsed?.kills === 'number' ? parsed.kills : 0,
+    };
+  } catch {
+    return { unlocked: [], kills: 0 };
+  }
+}
+
+function saveAchievements(save: AchievementSave) {
+  try {
+    localStorage.setItem(ACHIEVE_KEY, JSON.stringify(save));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// Returns true only the first time an achievement is unlocked.
+export function unlockAchievement(id: string): boolean {
+  const save = loadAchievements();
+  if (save.unlocked.includes(id)) return false;
+  save.unlocked.push(id);
+  saveAchievements(save);
+  return true;
+}
+
+// Adds to the lifetime kill count and returns the new total.
+export function addKills(n: number): number {
+  const save = loadAchievements();
+  save.kills += Math.max(0, n);
+  saveAchievements(save);
+  return save.kills;
+}

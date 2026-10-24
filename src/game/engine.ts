@@ -12,7 +12,8 @@ import {
 } from './sprites';
 import { buildBackground } from './background';
 import { sfx } from './audio';
-import { loadProgress, saveBest, saveProgress, type Snapshot } from './storage';
+import { addKills, loadAchievements, loadProgress, saveBest, saveProgress, unlockAchievement, type Snapshot } from './storage';
+import { ENDLESS_GOAL, KILLS_GOAL, ROUND_CLEAR, type AchievementId } from './achievements';
 
 export interface Tower {
   id: number;
@@ -165,6 +166,13 @@ export class Game {
   banner: Banner | null = null;
   // The boss that reached the portal, if that is how the run ended.
   killedBy: EnemyType | null = null;
+  // Achievements unlocked this game and not yet dismissed, oldest first.
+  awards: { id: AchievementId; key: number }[] = [];
+  // Kills already added to the lifetime total, and placeables put down this round.
+  private tallied = 0;
+  private placed = 0;
+  // Already earned, so checks on every kill never touch storage.
+  private earned = new Set(loadAchievements().unlocked);
   version = 0;
 
   private hover: { tx: number; ty: number } | null = null;
@@ -218,6 +226,8 @@ export class Game {
       this.lives = this.maxLives;
       this.checkpoint();
     }
+    this.tallied = this.kills;
+    if (this.perks.size >= 3) this.award('perked_up');
     const fresh = [
       ...TOWER_ORDER.filter((t) => TOWERS[t].unlock === this.round).map((t) => TOWERS[t].name),
       ...TRAP_ORDER.filter((t) => TRAPS[t].unlock === this.round).map((t) => TRAPS[t].name),
@@ -418,6 +428,7 @@ export class Game {
     }
     this.gold -= PERKS[k].cost;
     this.perks.add(k);
+    if (this.perks.size >= 3) this.award('perked_up');
     if (k === 'plating') {
       this.maxLives += PERK_LIVES;
       this.lives += PERK_LIVES;
@@ -519,6 +530,7 @@ export class Game {
     this.gold -= cost;
     t.spent += cost;
     t.level++;
+    if (t.level >= 3) this.award('maxed');
     this.rings.push({ x: t.x, y: t.y, r0: 3, r1: 12, life: 0.35, max: 0.35, color: PAL.k7 });
     for (let i = 0; i < 14; i++) this.spark(t.x, t.y, i % 3 === 0 ? PAL.r2 : PAL.k7, 40, -20);
     sfx.play('upgrade');
@@ -556,6 +568,28 @@ export class Game {
     sfx.play('click');
     this.checkpoint();
     this.touch();
+  }
+
+  // Unlocks an achievement the first time it is earned and queues its pop-up.
+  private award(id: AchievementId) {
+    if (this.earned.has(id)) return;
+    this.earned.add(id);
+    if (!unlockAchievement(id)) return;
+    this.awards.push({ id, key: ++uid });
+    sfx.play('achieve');
+    this.touch();
+  }
+
+  dismissAward(key: number) {
+    this.awards = this.awards.filter((a) => a.key !== key);
+    this.touch();
+  }
+
+  // Adds this game's new kills to the lifetime total.
+  private tallyKills() {
+    const total = addKills(this.kills - this.tallied);
+    this.tallied = this.kills;
+    if (total >= KILLS_GOAL) this.award('thousand_cuts');
   }
 
   private showBanner(text: string, sub?: string, danger = false) {
@@ -724,6 +758,8 @@ export class Game {
       recoil: 0, pulse: 0, kills: 0, dmgDone: 0, charge: 0, lockId: 0, firing: 0, jam: 0,
     };
     this.towers.push(t);
+    if (this.towers.length >= 12) this.award('arsenal');
+    if (type === 'james') this.award('legendary');
     for (let i = 0; i < 10; i++) this.spark(t.x + rand(-6, 6), t.y + 6, pick([PAL.k3, PAL.k4]), 20, -10);
     sfx.play('build');
     this.checkpoint();
@@ -744,6 +780,7 @@ export class Game {
     }
     this.gold -= cost;
     const p = this.addTrap(type, tx, ty, TRAPS[type].uses);
+    if (++this.placed >= 10) this.award('road_works');
     for (let i = 0; i < 8; i++) this.spark(p.x + rand(-5, 5), p.y + 5, pick([PAL.k3, PAL.k4]), 20, -10);
     sfx.play('mine');
     this.checkpoint();
@@ -1027,6 +1064,7 @@ export class Game {
       if (this.warded(e.x, e.y, e.w * 0.4)) {
         // A Warden's field holds it in place: the blink fizzles.
         for (let i = 0; i < 5; i++) this.spark(e.x, e.y, pick([PAL.k6, PAL.k4]), 25, 0);
+        this.award('not_so_fast');
         return;
       }
       for (let i = 0; i < 6; i++) this.parts.push({ x: e.x + rand(-3, 3), y: e.y + rand(-3, 3), vx: 0, vy: 0, life: 0.25, max: 0.25, color: pick([PAL.r2, PAL.k6]), grav: 0 });
@@ -1542,6 +1580,9 @@ export class Game {
     }
     const gold = e.gold + Math.round(e.gold * bounty);
     this.gold += gold;
+    this.award('first_blood');
+    if (e.type === 'boss') this.award('giant_slayer');
+    if (this.gold >= 2000) this.award('hoarder');
     if (src) src.kills++;
     this.touch();
     const boss = isBoss(e.type);
@@ -1582,6 +1623,7 @@ export class Game {
       this.status = 'lost';
       this.placing = null;
       saveBest(this.map.id, this.wave - 1);
+      this.tallyKills();
       // Falling in endless still counts the round as beaten.
       if (this.endless) this.save(this.nextRound, undefined, [...this.perks]);
       else this.save(this.round);
@@ -1610,9 +1652,16 @@ export class Game {
     if (bonus > waveBonus(this.wave)) sfx.play('coin');
     this.gold += bonus;
     saveBest(this.map.id, this.wave);
+    this.tallyKills();
+    if (this.gold >= 2000) this.award('hoarder');
+    if (this.endless && this.wave >= ENDLESS_GOAL) this.award('endless_40');
     if (this.wave >= TOTAL_WAVES && !this.endless) {
       this.status = 'won';
       this.placing = null;
+      const clear = ROUND_CLEAR[this.map.id];
+      if (clear) this.award(clear);
+      if (this.lives >= this.maxLives) this.award('flawless');
+      if (this.lives === 1) this.award('by_a_thread');
       // Everything owned now goes on to the next round.
       this.save(this.nextRound, undefined, [...this.perks]);
       sfx.play('win');

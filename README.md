@@ -91,6 +91,10 @@ One-off upgrades that last for the rest of the campaign: buy one and it carries 
 | **Overclock** | Every tower attacks 15% faster. | Round 3 |
 | **Long Sight** | Every tower reaches 15% further. | Round 4 |
 
+## Achievements
+
+18 achievements, from your first kill to clearing every round, are kept across campaigns. Open the list from the trophy button in the top bar. One is a secret.
+
 ## The horde
 
 | Enemy | Trait |

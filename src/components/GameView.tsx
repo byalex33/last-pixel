@@ -16,6 +16,7 @@ import {
   type Buildable, type PerkType, type TowerLevel,
 } from '../game/data';
 import { enemyIcon, towerIcon, trapIcon } from '../game/sprites';
+import { AchievementsModal, AwardToasts } from './Achievements';
 import { Btn } from './Btn';
 import { EnemyCard } from './EnemyCard';
 import { Story } from './Story';
@@ -49,8 +50,9 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   // Wait for the loader to clear so the typing is seen and keys still reach the loader.
   const storyOpen = story && !!chapter && !paused;
   const [confirmRestart, setConfirmRestart] = useState(false);
-  // HUD actions are off while the story or the restart check is up.
-  const blocked = storyOpen || confirmRestart;
+  const [awardsOpen, setAwardsOpen] = useState(false);
+  // HUD actions are off while the story, the restart check or the achievements list is up.
+  const blocked = storyOpen || confirmRestart || awardsOpen;
 
   // Both hold the game still, then hand back whatever pause state they found.
   useEffect(() => {
@@ -66,16 +68,20 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     else onRestart();
   };
 
-  // While the restart check is open, keys never reach the game; Escape cancels.
+  // While the restart check or achievements list is open, keys never reach the game; Escape closes it.
+  const dialogOpen = confirmRestart || awardsOpen;
   useEffect(() => {
-    if (!confirmRestart) return;
+    if (!dialogOpen) return;
     const onKey = (e: KeyboardEvent) => {
       e.stopImmediatePropagation();
-      if (e.key === 'Escape') setConfirmRestart(false);
+      if (e.key === 'Escape') {
+        setConfirmRestart(false);
+        setAwardsOpen(false);
+      }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [confirmRestart]);
+  }, [dialogOpen]);
 
   useEffect(() => {
     if (paused) return;
@@ -166,6 +172,9 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
               <PiBookOpenTextFill />
             </Btn>
           )}
+          <Btn onClick={() => setAwardsOpen(true)} aria-label="Achievements" title="Achievements" disabled={blocked}>
+            <PiTrophyFill />
+          </Btn>
           <Btn onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
             {muted ? <PiSpeakerSlashFill /> : <PiSpeakerHighFill />}
           </Btn>
@@ -180,6 +189,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <div className="screen-wrap" style={{ width: W * scale, height: H * scale }}>
             <canvas ref={canvasRef} className="screen pixel" style={{ width: W * scale, height: H * scale }} />
             <EnemyCard game={game} scale={scale} />
+            <AwardToasts game={game} />
 
             {game.banner && (
               <div key={game.banner.id} className={`banner${game.banner.danger ? ' danger' : ''}`}>
@@ -254,6 +264,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                 </div>
               </div>
             )}
+
+            {awardsOpen && <AchievementsModal onClose={() => setAwardsOpen(false)} />}
 
             {confirmRestart && (
               <div className="overlay">

@@ -3,7 +3,7 @@ export type SfxName =
   | 'leak' | 'build' | 'upgrade' | 'sell' | 'wave' | 'boss' | 'clear'
   | 'click' | 'error' | 'win' | 'lose'
   | 'flame' | 'laser' | 'mine' | 'quake' | 'coin' | 'jam' | 'type' | 'slam'
-  | 'saw' | 'spit' | 'acid' | 'ward' | 'lock' | 'strike' | 'snipe';
+  | 'saw' | 'spit' | 'acid' | 'ward' | 'lock' | 'strike' | 'snipe' | 'achieve';
 
 class Sfx {
   private ctx: AudioContext | null = null;
@@ -189,6 +189,12 @@ class Sfx {
           this.noise(0.5, 0.14, 1800, 0.12);
           this.noise(0.4, 0.07, 1200, 0.3);
           [1319, 1760, 2637].forEach((f, i) => this.tone(f, f, 0.12, 'square', 0.025, 0.05 + i * 0.05));
+        }
+        break;
+      case 'achieve':
+        if (this.gate(name, 0.4)) {
+          [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, f, 0.14, 'square', 0.045, i * 0.07));
+          this.tone(1568, 1568, 0.4, 'triangle', 0.04, 0.28);
         }
         break;
       case 'type':
