@@ -35,8 +35,8 @@ export function App() {
         map={MAPS[run.round]}
         snapshot={run.snapshot}
         paused={phase === 'loading'}
-        onRestart={() => startRound(run.round)}
-        onNextRound={() => startRound(run.round + 1)}
+        onRestart={(perks) => startRound(run.round, perks)}
+        onNextRound={(perks) => startRound(run.round + 1, perks)}
         onNewCampaign={() => {
           saveStorySeen(-1);
           startRound(0, []);

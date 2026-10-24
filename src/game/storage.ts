@@ -80,6 +80,7 @@ export interface Snapshot {
   mines?: MineSave[]; // missing from saves made before mines were kept
   traps?: TrapSave[]; // missing from saves made before placeables
   perks?: string[];
+  startPerks?: string[]; // perks the round started with, for restarting it; missing from older saves
 }
 
 export interface TrapSave {

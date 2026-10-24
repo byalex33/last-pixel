@@ -34,19 +34,21 @@ const ICONS: Record<AchievementId, ReactNode> = {
 const byId = (id: AchievementId) => ACHIEVEMENTS.find((a) => a.id === id)!;
 
 // Pop-ups for achievements just unlocked; each clears itself after a few seconds.
-export function AwardToasts({ game }: { game: Game }) {
+// Docked, they sit in a dialog's flow above its box instead, and stay until the dialog goes.
+export function AwardToasts({ game, docked }: { game: Game; docked?: boolean }) {
   if (!game.awards.length) return null;
   return (
-    <div className="award-stack" aria-live="polite">
-      {game.awards.slice(0, 3).map((a) => (
-        <AwardToast key={a.key} id={a.id} onDone={() => game.dismissAward(a.key)} />
+    <div className={`award-stack${docked ? ' is-docked' : ''}`} aria-live="polite">
+      {(docked ? game.awards : game.awards.slice(0, 3)).map((a) => (
+        <AwardToast key={a.key} id={a.id} onDone={docked ? undefined : () => game.dismissAward(a.key)} />
       ))}
     </div>
   );
 }
 
-function AwardToast({ id, onDone }: { id: AchievementId; onDone: () => void }) {
+function AwardToast({ id, onDone }: { id: AchievementId; onDone?: () => void }) {
   useEffect(() => {
+    if (!onDone) return;
     const t = window.setTimeout(onDone, 4500);
     return () => window.clearTimeout(t);
     // Only the first mount starts the clock; onDone is a fresh closure on every render.
