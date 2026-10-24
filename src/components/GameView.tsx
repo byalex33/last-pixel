@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   PiArrowCounterClockwiseBold, PiArrowFatUpFill, PiArrowRightBold, PiBookOpenTextFill, PiCoinsFill, PiCrosshairFill,
   PiFastForwardFill, PiFlagFill, PiHeartFill, PiInfinityBold, PiMapTrifoldFill, PiPauseFill, PiPlayFill,
-  PiLockSimpleFill, PiRepeatBold, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
+  PiLockSimpleFill, PiQuestionBold, PiRepeatBold, PiCastleTurretFill, PiTrafficConeFill, PiStarFill, PiCheckBold,
+  PiSwordFill, PiShieldPlusFill, PiRecycleFill, PiPiggyBankFill, PiGaugeFill, PiBinocularsFill, PiSkullFill, PiSpeakerHighFill, PiSpeakerSlashFill, PiTrophyFill, PiWarningFill,
   PiXBold,
 } from 'react-icons/pi';
 import { H, W } from '../game/constants';
@@ -11,9 +12,10 @@ import type { MapDef } from '../game/maps';
 import { EPILOGUE, LORE } from '../game/lore';
 import { loadStorySeen, saveStorySeen, type Snapshot } from '../game/storage';
 import {
-  ENEMIES, TARGET_MODES, TOTAL_WAVES, TOWERS, TOWER_KEYS, TOWER_ORDER, type TowerLevel, type TowerType,
+  ENEMIES, PERKS, PERK_ORDER, TARGET_MODES, TOTAL_WAVES, TOWERS, TOWER_KEYS, TOWER_ORDER, TRAPS, TRAP_ORDER, isTrap,
+  type Buildable, type PerkType, type TowerLevel,
 } from '../game/data';
-import { enemyIcon, towerIcon } from '../game/sprites';
+import { enemyIcon, towerIcon, trapIcon } from '../game/sprites';
 import { Btn } from './Btn';
 import { EnemyCard } from './EnemyCard';
 import { Story } from './Story';
@@ -101,6 +103,16 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   }, []);
 
   const sel = game.selected;
+  // The Build list entry under the mouse (or keyboard focus), shown as an info card beside it.
+  const [peek, setPeek] = useState<{ id: string; rect: DOMRect } | null>(null);
+  const [tab, setTab] = useState<ShopTab>('towers');
+  const entries = shopEntries(game, tab);
+  const peeked = peek ? entries.find((en) => en.id === peek.id) : undefined;
+  // The list unmounts under the cursor when a tower is selected, so no pointerleave ever arrives.
+  const hasSel = !!sel;
+  useEffect(() => {
+    if (hasSel) setPeek(null);
+  }, [hasSel]);
 
   return (
     <div className="game">
@@ -260,50 +272,78 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
             <Inspector game={game} t={sel} />
           ) : (
             <section className="panel px-box">
-              <h3>Build</h3>
-              <div className="shop">
-                {TOWER_ORDER.map((t, i) => {
-                  const cost = TOWERS[t].levels[0].cost;
-                  const locked = !game.unlocked(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      className={`shop-item${game.placing === t ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
-                      disabled={locked || (game.gold < cost && game.placing !== t)}
-                      onClick={(e) => {
-                        game.toggleBuild(t);
-                        e.currentTarget.blur();
-                      }}
-                      title={locked ? `Unlocks in round ${TOWERS[t].unlock + 1}` : TOWERS[t].blurb}
-                    >
-                      <kbd>{TOWER_KEYS[i]}</kbd>
-                      <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
-                      <span className="shop-name">{TOWERS[t].name}</span>
-                      {locked ? (
-                        <span className="shop-cost"><PiLockSimpleFill /> R{TOWERS[t].unlock + 1}</span>
-                      ) : (
-                        <span className="shop-cost"><PiCoinsFill /> {cost}</span>
-                      )}
-                    </button>
-                  );
-                })}
+              <div className="shop-tabs" role="tablist" aria-label="Build">
+                {SHOP_TABS.map(({ id, label, icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === id}
+                    className={`shop-tab${tab === id ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setTab(id);
+                      setPeek(null);
+                    }}
+                  >
+                    {icon} {label}
+                  </button>
+                ))}
               </div>
+              <div className="shop" role="tabpanel">
+                {entries.map((en) => (
+                  // aria-disabled rather than disabled: a disabled button gets no hover events,
+                  // and locked or unaffordable entries still need their info card.
+                  <button
+                    key={en.id}
+                    type="button"
+                    className={`shop-item${en.active ? ' is-active' : ''}${en.locked ? ' is-locked' : ''}${en.off ? ' is-off' : ''}${en.owned ? ' is-owned' : ''}${en.legendary ? ' is-legendary' : ''}`}
+                    aria-disabled={en.off}
+                    aria-keyshortcuts={en.hotkey}
+                    onClick={(e) => {
+                      if (en.off) return;
+                      en.act();
+                      e.currentTarget.blur();
+                      setPeek(null);
+                    }}
+                    onPointerEnter={(e) => {
+                      if (e.pointerType === 'mouse') setPeek({ id: en.id, rect: e.currentTarget.getBoundingClientRect() });
+                    }}
+                    onPointerLeave={() => setPeek(null)}
+                    onFocus={(e) => {
+                      if (e.currentTarget.matches(':focus-visible')) setPeek({ id: en.id, rect: e.currentTarget.getBoundingClientRect() });
+                    }}
+                    onBlur={() => setPeek(null)}
+                  >
+                    <kbd className={en.hotkey ? undefined : 'is-blank'}>{en.hotkey ?? ''}</kbd>
+                    {/* Locked entries stay a mystery until their round comes up. */}
+                    {en.locked ? <span className="icon32 shop-mystery" aria-hidden="true"><PiQuestionBold /></span> : en.icon}
+                    <span className="shop-name">{en.locked ? '???' : en.name}</span>
+                    {en.locked ? (
+                      <span className="shop-cost"><PiLockSimpleFill /> R{en.unlock + 1}</span>
+                    ) : en.owned ? (
+                      <span className="shop-cost"><PiCheckBold /> Owned</span>
+                    ) : (
+                      <span className="shop-cost"><PiCoinsFill /> {en.cost}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {peeked && !game.placing && <ShopCard entry={peeked} rect={peek!.rect} short={game.gold < peeked.cost} />}
             </section>
           )}
 
           {sel ? null : game.placing ? (
-            <PlacingInfo type={game.placing} onCancel={() => game.toggleBuild(null)} />
+            <PlacingInfo entry={entryFor(game, game.placing)} onCancel={() => game.toggleBuild(null)} />
           ) : (
             // Short screens drop the tip once the first wave is out (see .tip.is-old).
             <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
               <h3>Tip</h3>
               <p className="hint for-mouse">
-                Pick a tower, then click an empty tile to build it. Click a tower to upgrade or sell it.
+                Pick a tower, then click an empty tile to build it. Placeables go on the road. Click a tower to upgrade or sell it.
                 Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
               </p>
               <p className="hint for-touch">
-                Pick a tower, then tap an empty tile twice to build it. Tap a tower to upgrade or sell it,
+                Pick a tower, then tap an empty tile twice to build it. Placeables go on the road. Tap a tower to upgrade or sell it,
                 or tap an enemy to see its stats.
               </p>
             </section>
@@ -328,11 +368,102 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   );
 }
 
+type ShopTab = 'towers' | 'placeables' | 'perks';
+
+const SHOP_TABS: { id: ShopTab; label: string; icon: ReactNode }[] = [
+  { id: 'towers', label: 'Towers', icon: <PiCastleTurretFill /> },
+  { id: 'perks', label: 'Perks', icon: <PiStarFill /> },
+  { id: 'placeables', label: 'Placeables', icon: <PiTrafficConeFill /> },
+];
+
+const PERK_ICONS: Record<PerkType, ReactNode> = {
+  sharp: <PiSwordFill />,
+  plating: <PiShieldPlusFill />,
+  salvage: <PiRecycleFill />,
+  interest: <PiPiggyBankFill />,
+  overclock: <PiGaugeFill />,
+  scope: <PiBinocularsFill />,
+};
+
+// One row of the Build list, whatever kind of thing it buys.
+interface ShopEntry {
+  id: string;
+  kind: 'Tower' | 'Placeable' | 'Perk';
+  name: string;
+  blurb: string;
+  icon: ReactNode;
+  bigIcon: ReactNode;
+  cost: number;
+  unlock: number;
+  locked: boolean;
+  active: boolean;
+  off: boolean;
+  owned?: boolean;
+  legendary?: boolean;
+  hotkey?: string;
+  rows: [string, ReactNode][];
+  act: () => void;
+}
+
+function entryFor(game: Game, b: Buildable): ShopEntry {
+  if (isTrap(b)) {
+    const def = TRAPS[b];
+    const locked = !game.trapUnlocked(b);
+    const rows: [string, ReactNode][] = [];
+    if (def.cut) rows.push(['Cut', `${pct(def.cut)} health`]);
+    if (def.slow) rows.push(['Slow', pct(def.slow)]);
+    if (def.stun) rows.push(['Stun', `${num(def.stun)}s`]);
+    if (def.recharge) rows.push(['Recharge', `${num(def.recharge)}s`]);
+    rows.push([b === 'barricade' ? 'Toughness' : 'Uses', def.uses]);
+    return {
+      id: b, kind: 'Placeable', name: def.name, blurb: def.blurb,
+      icon: <img src={trapIcon(b)} alt="" className="pixel icon32" />,
+      bigIcon: <img src={trapIcon(b)} alt="" className="pixel icon48" />,
+      cost: def.cost, unlock: def.unlock, locked, active: game.placing === b,
+      off: locked || (game.gold < def.cost && game.placing !== b), rows,
+      act: () => game.toggleBuild(b),
+    };
+  }
+  const def = TOWERS[b];
+  const locked = !game.unlocked(b);
+  const cost = def.levels[0].cost;
+  return {
+    id: b, kind: 'Tower', name: def.name, blurb: def.blurb,
+    icon: <img src={towerIcon(b, 1)} alt="" className="pixel icon32" />,
+    bigIcon: <img src={towerIcon(b, 1)} alt="" className="pixel icon48" />,
+    cost, unlock: def.unlock, locked, active: game.placing === b,
+    off: locked || (game.gold < cost && game.placing !== b), legendary: def.legendary,
+    hotkey: TOWER_KEYS[TOWER_ORDER.indexOf(b)].toUpperCase(),
+    rows: statRows(def.levels[0], undefined, def.global),
+    act: () => game.toggleBuild(b),
+  };
+}
+
+function perkEntry(game: Game, k: PerkType): ShopEntry {
+  const def = PERKS[k];
+  const locked = !game.perkUnlocked(k);
+  const owned = game.perks.has(k);
+  return {
+    id: k, kind: 'Perk', name: def.name, blurb: def.blurb,
+    icon: <span className="icon32 perk-icon" aria-hidden="true">{PERK_ICONS[k]}</span>,
+    bigIcon: <span className="icon48 perk-icon" aria-hidden="true">{PERK_ICONS[k]}</span>,
+    cost: def.cost, unlock: def.unlock, locked, active: false, owned,
+    off: locked || owned || game.gold < def.cost, rows: [],
+    act: () => game.buyPerk(k),
+  };
+}
+
+function shopEntries(game: Game, tab: ShopTab): ShopEntry[] {
+  if (tab === 'placeables') return TRAP_ORDER.map((t) => entryFor(game, t));
+  if (tab === 'perks') return PERK_ORDER.map((k) => perkEntry(game, k));
+  return TOWER_ORDER.map((t) => entryFor(game, t));
+}
+
 const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const tiles = (n: number) => (n / 16).toFixed(1);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-function statRows(L: TowerLevel, next?: TowerLevel) {
+function statRows(L: TowerLevel, next?: TowerLevel, global = false) {
   const fmt = (a: number, b: number | undefined, f: (n: number) => string) =>
     b !== undefined && f(b) !== f(a) ? (
       <>
@@ -347,7 +478,8 @@ function statRows(L: TowerLevel, next?: TowerLevel) {
     if (a) rows.push([label, fmt(a, next?.[key], f)]);
   };
   add('Damage', 'dmg', num);
-  add(L.buff ? 'Aura' : L.bounty ? 'Reach' : 'Range', 'range', tiles);
+  if (global) rows.push(['Range', 'Whole map']);
+  else add(L.buff ? 'Aura' : L.bounty ? 'Reach' : 'Range', 'range', tiles);
   if (L.rate) rows.push([L.mines ? 'Lays' : 'Rate', fmt(1 / L.rate, next ? 1 / next.rate : undefined, (n) => `${n.toFixed(1)}/s`)]);
   add('Blast', 'splash', tiles);
   add('Slow', 'slow', pct);
@@ -360,20 +492,35 @@ function statRows(L: TowerLevel, next?: TowerLevel) {
   add('Boost', 'buff', (n) => `+${pct(n)}`);
   add('Per wave', 'income', (n) => `+${n}`);
   add('Bounty', 'bounty', (n) => `+${pct(n)}`);
+  add('Saw', 'saw', tiles);
+  add('Corrode', 'corrode', (n) => `+${pct(n)}`);
   return rows;
 }
 
 function UnlockList({ round }: { round: number }) {
-  const fresh = TOWER_ORDER.filter((t) => TOWERS[t].unlock === round);
+  const fresh = [
+    ...TOWER_ORDER.filter((t) => TOWERS[t].unlock === round).map((t) => ({
+      id: t, name: TOWERS[t].name, blurb: TOWERS[t].blurb, legendary: TOWERS[t].legendary,
+      icon: <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />,
+    })),
+    ...TRAP_ORDER.filter((t) => TRAPS[t].unlock === round).map((t) => ({
+      id: t, name: TRAPS[t].name, blurb: TRAPS[t].blurb, legendary: false,
+      icon: <img src={trapIcon(t)} alt="" className="pixel icon32" />,
+    })),
+    ...PERK_ORDER.filter((k) => PERKS[k].unlock === round).map((k) => ({
+      id: k, name: PERKS[k].name, blurb: PERKS[k].blurb, legendary: false,
+      icon: <span className="icon32 perk-icon" aria-hidden="true">{PERK_ICONS[k]}</span>,
+    })),
+  ];
   if (!fresh.length) return null;
   return (
     <div className="unlocks">
       <span className="unlocks-label">Unlocks next round</span>
       <ul>
-        {fresh.map((t) => (
-          <li key={t} title={TOWERS[t].blurb}>
-            <img src={towerIcon(t, 1)} alt="" className="pixel icon32" />
-            <span>{TOWERS[t].name}</span>
+        {fresh.map((u) => (
+          <li key={u.id} title={u.blurb}>
+            {u.icon}
+            <span className={u.legendary ? 'legendary-text' : undefined}>{u.name}</span>
           </li>
         ))}
       </ul>
@@ -390,7 +537,7 @@ function Inspector({ game, t }: { game: Game; t: Tower }) {
       <div className="insp-head">
         <img src={towerIcon(t.type, t.level)} alt="" className="pixel icon48" />
         <div>
-          <h3>{def.name}</h3>
+          <h3 className={def.legendary ? 'legendary-text' : undefined}>{def.name}</h3>
           <div className="pips">
             {[1, 2, 3].map((n) => (
               <span key={n} className={n <= t.level ? 'on' : ''} />
@@ -402,7 +549,7 @@ function Inspector({ game, t }: { game: Game; t: Tower }) {
         </Btn>
       </div>
       <dl className="stats">
-        {statRows(L, next).map(([k, v]) => (
+        {statRows(L, next, def.global).map(([k, v]) => (
           <div key={k}>
             <dt>{k}</dt>
             <dd>{v}</dd>
@@ -454,30 +601,105 @@ function Inspector({ game, t }: { game: Game; t: Tower }) {
   );
 }
 
-function PlacingInfo({ type, onCancel }: { type: TowerType; onCancel: () => void }) {
-  const def = TOWERS[type];
+// Info card for a Build list entry, floated beside it (or below it when there is no room to the left).
+function ShopCard({ entry: en, rect, short }: { entry: ShopEntry; rect: DOMRect; short: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const pad = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = rect.left - w - pad;
+    let top = rect.top + rect.height / 2 - h / 2;
+    if (left < pad) {
+      left = Math.min(Math.max(pad, rect.left), vw - w - pad);
+      top = rect.bottom + pad;
+      if (top + h > vh - pad) top = rect.top - h - pad;
+    }
+    setPos({ left, top: Math.min(Math.max(pad, top), vh - h - pad) });
+  }, [rect]);
+
+  return (
+    <div
+      ref={ref}
+      className={`shop-card px-box${en.legendary ? ' is-legendary' : ''}`}
+      role="tooltip"
+      style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
+    >
+      <div className="insp-head">
+        {en.locked ? <span className="icon48 shop-mystery" aria-hidden="true"><PiQuestionBold /></span> : en.bigIcon}
+        <div>
+          <span className="shop-card-kind">{en.kind}</span>
+          <h3 className={en.legendary ? 'legendary-text' : undefined}>{en.locked ? '???' : en.name}</h3>
+          <p className="hint">
+            {en.locked
+              ? en.legendary
+                ? 'Something legendary is coming. Nobody knows what it is yet.'
+                : 'A new schematic, still being recovered.'
+              : en.blurb}
+          </p>
+        </div>
+      </div>
+      {en.locked ? (
+        <p className="shop-card-foot"><span><PiLockSimpleFill /> Unlocks in round {en.unlock + 1}</span></p>
+      ) : (
+        <>
+          {en.rows.length > 0 && (
+            <dl className="stats">
+              {en.rows.map(([k, v]) => (
+                <div key={k}>
+                  <dt>{k}</dt>
+                  <dd>{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <p className="shop-card-foot">
+            {en.owned ? (
+              <span><PiCheckBold /> Owned this round</span>
+            ) : (
+              <span className={short ? 'red' : undefined}><PiCoinsFill /> {en.cost}</span>
+            )}
+            {en.hotkey && <span className="dim">Press <kbd>{en.hotkey}</kbd></span>}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PlacingInfo({ entry: en, onCancel }: { entry: ShopEntry; onCancel: () => void }) {
   return (
     <section className="panel px-box inspector">
       <div className="insp-head">
-        <img src={towerIcon(type, 1)} alt="" className="pixel icon48" />
+        {en.bigIcon}
         <div>
-          <h3>{def.name}</h3>
-          <p className="hint">{def.blurb}</p>
+          <h3 className={en.legendary ? 'legendary-text' : undefined}>{en.name}</h3>
+          <p className="hint">{en.blurb}</p>
         </div>
         <Btn variant="ghost" className="insp-close" onClick={onCancel} aria-label="Cancel">
           <PiXBold />
         </Btn>
       </div>
       <dl className="stats">
-        {statRows(def.levels[0]).map(([k, v]) => (
+        {en.rows.map(([k, v]) => (
           <div key={k}>
             <dt>{k}</dt>
             <dd>{v}</dd>
           </div>
         ))}
       </dl>
-      <p className="hint for-mouse">Click an empty tile to build. Hold <kbd>Shift</kbd> to build several.</p>
-      <p className="hint for-touch">Tap an empty tile to preview the tower, then tap it again to build.</p>
+      <p className="hint for-mouse">
+        Click {en.kind === 'Placeable' ? 'a road tile' : 'an empty tile'} to build. Hold <kbd>Shift</kbd> to build several.
+      </p>
+      <p className="hint for-touch">
+        Tap {en.kind === 'Placeable' ? 'a road tile' : 'an empty tile'} to preview it, then tap it again to build.
+      </p>
     </section>
   );
 }

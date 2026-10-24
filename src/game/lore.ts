@@ -24,7 +24,7 @@ export const LORE: Record<string, Chapter> = {
   rift: {
     intro: [
       'Here the world has split. The Static pours through the Rift faster than anywhere else.',
-      'Your last schematics are ready: Beacon, Lancer and Quake. Use everything you have.',
+      'More schematics recovered: Beacon, Lancer and Quake. Use everything you have.',
     ],
     outro: 'The Rift is sealed, for now. Beneath it, something is stitching itself back together.',
   },
@@ -32,6 +32,7 @@ export const LORE: Record<string, Chapter> = {
     intro: [
       'Below the Rift the ground is already grey. Nothing here stays broken for long.',
       'Menders walk with the horde, knitting torn Static whole again. Kill them first, or fight every foe twice.',
+      'New schematics: Ripper and Blight. Nothing a Mender can do will close a wound that Blight has eaten.',
     ],
     outro: 'The Hollow goes quiet. Only one road is left, and it leads to the Core.',
   },
@@ -39,6 +40,7 @@ export const LORE: Record<string, Chapter> = {
     intro: [
       'This is the heart of the Portal, the last place with any colour left.',
       'Glitches skip through your lines, and behind them comes what the Static saved for last: the Eraser. Every tower it passes goes silent.',
+      'Your last schematics: Warden and Orbital. And one more, with a name scrawled across it in colour. The James.',
       'If the Core falls, there is nothing left to draw. Hold.',
     ],
     outro: 'The Eraser comes apart pixel by pixel.',

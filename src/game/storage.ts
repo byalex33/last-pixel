@@ -78,6 +78,15 @@ export interface Snapshot {
   autoWave: boolean;
   towers: TowerSave[];
   mines?: MineSave[]; // missing from saves made before mines were kept
+  traps?: TrapSave[]; // missing from saves made before placeables
+  perks?: string[];
+}
+
+export interface TrapSave {
+  type: string;
+  tx: number;
+  ty: number;
+  uses: number;
 }
 
 export interface Progress {

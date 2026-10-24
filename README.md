@@ -61,6 +61,35 @@ You are its Keeper. Over five rounds, the Static pushes deeper with new tricks. 
 | `9` | **Beacon** | No attack. Boosts damage and fire rate of towers around it. | Round 3 |
 | `0` | **Lancer** | Steady laser that heats up the longer it holds a target. | Round 3 |
 | `-` | **Quake** | Slams the ground, knocking foes back and stunning them. | Round 3 |
+| `Q` | **Ripper** | Hurls a sawblade back up the road that cuts every foe it passes. | Round 4 |
+| `W` | **Blight** | Lobs acid that eats armor. Corroded foes take more damage and cannot be healed. | Round 4 |
+| `E` | **Warden** | Pulses a field that stops foes blinking and shields towers from being jammed. | Round 5 |
+| `R` | **Orbital** | Calls a strike from orbit on a foe anywhere on the map. | Round 5 |
+| `J` | **The James** | Legendary sniper with unlimited range. Added by my best pal, James. | Round 5 |
+
+## Placeables
+
+Placeables go on the road itself, where towers cannot, and wear out with use.
+
+| Placeable | Role | Unlocks |
+| --- | --- | :-: |
+| **Spikes** | Cut 10% of the health of every foe that walks over them. Wear out after 25 foes. | Round 1 |
+| **Tar Pit** | Slows foes wading through it. Dries up after 40 foes. | Round 2 |
+| **Barricade** | Blocks the road until the horde smashes through it. | Round 3 |
+| **Shock Trap** | Stuns every foe on it, then recharges. Burns out after 8 shocks. | Round 4 |
+
+## Perks
+
+One-off upgrades that last for the rest of the round.
+
+| Perk | Effect | Unlocks |
+| --- | --- | :-: |
+| **Hollow Points** | Every tower deals 15% more damage. | Round 1 |
+| **Plating** | The portal gains 5 lives, and 5 more maximum. | Round 1 |
+| **Salvage** | Towers sell back for 90% instead of 70%. | Round 1 |
+| **Interest** | Each wave cleared pays 10% of your unspent gold, up to 60. | Round 2 |
+| **Overclock** | Every tower attacks 15% faster. | Round 3 |
+| **Long Sight** | Every tower reaches 15% further. | Round 4 |
 
 ## The horde
 
@@ -81,7 +110,7 @@ You are its Keeper. Over five rounds, the Static pushes deeper with new tricks. 
 
 | Input | Action |
 | --- | --- |
-| `1` to `0`, `-` | Pick a tower to build |
+| `1` to `0`, `-`, `Q` `W` `E` `R`, `J` | Pick a tower to build |
 | Click a tile | Build the picked tower (hold `Shift` to keep building) |
 | Click a tower | Select it to upgrade, sell or change targeting |
 | `Space` | Send the next wave |

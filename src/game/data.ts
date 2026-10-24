@@ -1,6 +1,7 @@
 export type TowerType =
   | 'blaster' | 'mortar' | 'frost' | 'rail' | 'tesla'
-  | 'flamer' | 'mines' | 'harvester' | 'beacon' | 'lancer' | 'quake';
+  | 'flamer' | 'mines' | 'harvester' | 'beacon' | 'lancer' | 'quake'
+  | 'ripper' | 'blight' | 'warden' | 'orbital' | 'james';
 export type EnemyType =
   | 'crawler' | 'runner' | 'brute' | 'armor' | 'splitter' | 'wisp' | 'boss'
   | 'mender' | 'glitch' | 'eraser';
@@ -28,6 +29,9 @@ export interface TowerLevel {
   buff?: number; // damage bonus given to nearby towers
   income?: number; // gold paid at the end of each wave
   bounty?: number; // extra kill gold in range
+  saw?: number; // pixels a saw rolls back up the road
+  corrode?: number; // extra damage taken while corroded; corroded foes also lose their armor and cannot be healed
+  corrodeDur?: number;
 }
 
 export interface TowerDef {
@@ -35,6 +39,8 @@ export interface TowerDef {
   blurb: string;
   unlock: number; // round index that unlocks it
   aims: boolean; // has targeting modes
+  global?: boolean; // reaches the whole map
+  legendary?: boolean; // drawn in full colour, the only thing in the game that is
   levels: TowerLevel[];
 }
 
@@ -42,9 +48,11 @@ export const TOWER_ORDER: TowerType[] = [
   'blaster', 'mortar', 'frost', 'rail', 'tesla',
   'flamer', 'mines', 'harvester',
   'beacon', 'lancer', 'quake',
+  'ripper', 'blight',
+  'warden', 'orbital', 'james',
 ];
 
-export const TOWER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-'];
+export const TOWER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', 'q', 'w', 'e', 'r', 'j'];
 
 export const isUnlocked = (type: TowerType, round: number) => TOWERS[type].unlock <= round;
 
@@ -174,7 +182,157 @@ export const TOWERS: Record<TowerType, TowerDef> = {
       { cost: 260, dmg: 24, range: 38, rate: 2.6, knock: 24, stun: 0.9 },
     ],
   },
+  ripper: {
+    name: 'Ripper',
+    blurb: 'Hurls a sawblade back up the road that cuts every foe it passes.',
+    unlock: 3,
+    aims: false,
+    levels: [
+      { cost: 150, dmg: 14, range: 34, rate: 2.0, saw: 80 },
+      { cost: 140, dmg: 24, range: 38, rate: 1.8, saw: 100 },
+      { cost: 230, dmg: 40, range: 42, rate: 1.5, saw: 130 },
+    ],
+  },
+  blight: {
+    name: 'Blight',
+    blurb: 'Lobs acid that eats armor. Corroded foes take more damage and cannot be healed.',
+    unlock: 3,
+    aims: true,
+    levels: [
+      { cost: 130, dmg: 6, range: 44, rate: 1.6, splash: 12, corrode: 0.15, corrodeDur: 3 },
+      { cost: 120, dmg: 10, range: 48, rate: 1.4, splash: 14, corrode: 0.25, corrodeDur: 3.5 },
+      { cost: 200, dmg: 16, range: 54, rate: 1.2, splash: 16, corrode: 0.35, corrodeDur: 4 },
+    ],
+  },
+  warden: {
+    name: 'Warden',
+    blurb: 'Pulses a field that stops foes blinking and shields towers from being jammed.',
+    unlock: 4,
+    aims: false,
+    levels: [
+      { cost: 160, dmg: 6, range: 32, rate: 1.2 },
+      { cost: 150, dmg: 11, range: 36, rate: 1.1 },
+      { cost: 240, dmg: 18, range: 42, rate: 1.0 },
+    ],
+  },
+  orbital: {
+    name: 'Orbital',
+    blurb: 'Calls a strike from orbit on a foe anywhere on the map.',
+    unlock: 4,
+    aims: true,
+    global: true,
+    levels: [
+      { cost: 220, dmg: 120, range: 0, rate: 4.0, splash: 10 },
+      { cost: 200, dmg: 210, range: 0, rate: 3.6, splash: 12 },
+      { cost: 320, dmg: 380, range: 0, rate: 3.2, splash: 14 },
+    ],
+  },
+  // A sniper with no range limit. Its rounds ignore armor.
+  james: {
+    name: 'The James',
+    blurb: 'Added by my best pal, James',
+    unlock: 4,
+    aims: true,
+    global: true,
+    legendary: true,
+    levels: [
+      { cost: 300, dmg: 260, range: 0, rate: 2.5 },
+      { cost: 280, dmg: 450, range: 0, rate: 2.2 },
+      { cost: 420, dmg: 800, range: 0, rate: 1.9 },
+    ],
+  },
 };
+
+/* ------------------------------------------------------------ placeables */
+
+// Placeables go on the road itself, where towers cannot, and wear out with use.
+export type TrapType = 'spikes' | 'tar' | 'barricade' | 'shock';
+
+export interface TrapDef {
+  name: string;
+  blurb: string;
+  unlock: number;
+  cost: number;
+  uses: number; // foes it works on before it wears out; for a Barricade, how much battering it takes
+  cut?: number; // fraction of a foe's max health taken by each pass
+  slow?: number;
+  stun?: number;
+  recharge?: number;
+}
+
+export const TRAP_ORDER: TrapType[] = ['spikes', 'tar', 'barricade', 'shock'];
+
+export const TRAPS: Record<TrapType, TrapDef> = {
+  spikes: {
+    name: 'Spikes',
+    blurb: 'Cut every foe that walks over them. Wear out after 25 foes.',
+    unlock: 0,
+    cost: 40,
+    uses: 25,
+    cut: 0.1,
+  },
+  tar: {
+    name: 'Tar Pit',
+    blurb: 'Foes wading through are slowed to a crawl. Dries up after 40 foes.',
+    unlock: 1,
+    cost: 35,
+    uses: 40,
+    slow: 0.55,
+  },
+  barricade: {
+    name: 'Barricade',
+    blurb: 'Blocks the road. The horde has to smash through it before moving on.',
+    unlock: 2,
+    cost: 80,
+    uses: 60,
+  },
+  shock: {
+    name: 'Shock Trap',
+    blurb: 'Stuns every foe on it, then recharges. Burns out after 8 shocks.',
+    unlock: 3,
+    cost: 70,
+    uses: 8,
+    stun: 1.2,
+    recharge: 4,
+  },
+};
+
+// Bosses shrug off most of what a placeable does to them.
+export const TRAP_BOSS = 0.2;
+
+// Anything picked from the Build menu and put on the map.
+export type Buildable = TowerType | TrapType;
+export const isTrap = (b: Buildable): b is TrapType => b in TRAPS;
+
+/* ---------------------------------------------------------------- perks */
+
+// One-off upgrades bought for the rest of the round.
+export type PerkType = 'sharp' | 'plating' | 'salvage' | 'interest' | 'overclock' | 'scope';
+
+export interface PerkDef {
+  name: string;
+  blurb: string;
+  unlock: number;
+  cost: number;
+}
+
+export const PERK_ORDER: PerkType[] = ['sharp', 'plating', 'salvage', 'interest', 'overclock', 'scope'];
+
+export const PERKS: Record<PerkType, PerkDef> = {
+  sharp: { name: 'Hollow Points', blurb: 'Every tower deals 15% more damage.', unlock: 0, cost: 300 },
+  plating: { name: 'Plating', blurb: 'The portal gains 5 lives, and 5 more maximum.', unlock: 0, cost: 200 },
+  salvage: { name: 'Salvage', blurb: 'Towers sell back for 90% of what you spent, up from 70%.', unlock: 0, cost: 150 },
+  interest: { name: 'Interest', blurb: 'Each wave cleared pays 10% of your unspent gold, up to 60.', unlock: 1, cost: 250 },
+  overclock: { name: 'Overclock', blurb: 'Every tower attacks 15% faster.', unlock: 2, cost: 350 },
+  scope: { name: 'Long Sight', blurb: 'Every tower reaches 15% further.', unlock: 3, cost: 300 },
+};
+
+export const PERK_DMG = 1.15;
+export const PERK_RATE = 1.15;
+export const PERK_RANGE = 1.15;
+export const PERK_LIVES = 5;
+export const SALVAGE_RATE = 0.9;
+export const interest = (gold: number) => Math.min(60, Math.floor(gold * 0.1));
 
 export interface EnemyDef {
   name: string;
@@ -202,7 +360,7 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   splitter: { name: 'Splitter', trait: 'Splits into runners', desc: 'Bursts into three Runners when killed.', hp: 50, speed: 17, gold: 6, dmg: 2, armor: 0, splits: 3 },
   wisp: { name: 'Wisp', trait: 'Immune to slow', desc: 'A flickering spirit that cold cannot touch.', hp: 34, speed: 27, gold: 6, dmg: 1, armor: 0, slowImmune: true },
   boss: { name: 'Colossus', trait: 'Boss', desc: 'Arrives every 10 waves. Tough, armored and hits the portal hard.', hp: 650, speed: 9, gold: 120, dmg: 6, armor: 3, boss: true },
-  mender: { name: 'Mender', trait: 'Heals the horde', desc: 'Stitches torn Static back together, up to 200 health a pulse. Kill it first.', hp: 45, speed: 15, gold: 9, dmg: 2, armor: 0, heal: 0.1, healCap: 200 },
+  mender: { name: 'Mender', trait: 'Heals the horde', desc: 'Stitches torn Static back together, up to 200 health a pulse. Kill it first, or corrode its patients.', hp: 45, speed: 15, gold: 9, dmg: 2, armor: 0, heal: 0.1, healCap: 200 },
   glitch: { name: 'Glitch', trait: 'Blinks ahead', desc: 'Skips frames, jumping forward through your lines.', hp: 32, speed: 22, gold: 8, dmg: 2, armor: 0, blink: 22 },
   eraser: { name: 'The Eraser', trait: 'Final boss', desc: 'What the Static saved for last. Everything it passes goes quiet.', hp: 2000, speed: 6, gold: 600, dmg: 20, armor: 6, boss: true, jam: 2.5 },
 };

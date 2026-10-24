@@ -1,5 +1,5 @@
 import { PAL, TILE } from './constants';
-import type { EnemyType, TowerType } from './data';
+import type { EnemyType, TowerType, TrapType } from './data';
 
 export type Sprite = HTMLCanvasElement;
 
@@ -284,7 +284,62 @@ const HEADS: Record<TowerType, Sprite> = {
     '3444444443',
     '.33333333.',
   ]),
+  ripper: makeSprite([
+    '.333333.',
+    '34444443',
+    '34555543',
+    '345cc543',
+    '345cc543',
+    '34555543',
+    '34444443',
+    '.333333.',
+  ]),
+  blight: makeSprite([
+    '.444444.',
+    '4bbbbbb4',
+    '4bccccb4',
+    '4bcddcb4',
+    '4bcddcb4',
+    '4bccccb4',
+    '4bbbbbb4',
+    '.444444.',
+  ]),
+  warden: makeSprite([
+    '.555555.',
+    '56666665',
+    '56777765',
+    '56700765',
+    '56700765',
+    '.567765.',
+    '..5665..',
+    '...55...',
+  ]),
+  orbital: makeSprite([
+    '5........5',
+    '65......56',
+    '.65....56.',
+    '..655556..',
+    '...6776...',
+    '....44....',
+    '...4554...',
+    '..455554..',
+    '.45555554.',
+    '4444444444',
+  ]),
+  james: makeSprite([
+    '..6666..',
+    '.677776.',
+    '67733776',
+    '67300376',
+    '67300376',
+    '67733776',
+    '.677776.',
+    '..6666..',
+  ]),
 };
+
+// The James cycles through every colour; nothing else in the game does.
+const hue = (h: number, l = 60) => `hsl(${Math.round(((h % 360) + 360) % 360)} 100% ${l}%)`;
 
 export function drawBase(g: CanvasRenderingContext2D, x: number, y: number, level: number) {
   g.fillStyle = PAL.k1;
@@ -352,6 +407,18 @@ export function drawTowerSprite(
     case 'flamer':
       barrel(g, cx, cy, angle, 8, 2, PAL.k5, PAL.k3);
       break;
+    case 'blight':
+      barrel(g, cx, cy, angle, 8 - kick, 2, PAL.k4, PAL.r2);
+      break;
+    case 'james': {
+      // Long rifle barrel with a scope riding on top and a muzzle that shifts colour.
+      const px = -Math.sin(angle);
+      const py = Math.cos(angle);
+      barrel(g, cx, cy, angle, 13 - kick, 2, PAL.k5, hue(time * 200));
+      barrel(g, cx - px * 2, cy - py * 2, angle, 6 - kick, 1, PAL.k7, level >= 2 ? hue(time * 200 + 180) : PAL.k6);
+      if (level >= 3) barrel(g, cx + px * 2, cy + py * 2, angle, 5 - kick, 1, PAL.k4, PAL.k6);
+      break;
+    }
     case 'lancer':
       // pulse carries the Lancer's heat, 0..1
       barrel(g, cx, cy, angle, 12, 1, PAL.k6, pulse > 0.6 ? PAL.k7 : pulse > 0 ? PAL.r3 : PAL.r1);
@@ -365,6 +432,22 @@ export function drawTowerSprite(
     for (let i = 0; i < 8; i++) {
       const a = spin + (i / 8) * Math.PI * 2;
       g.fillRect(Math.round(cx + Math.cos(a) * 5.5) - 1, Math.round(cy + Math.sin(a) * 5.5) - 1, 2, 2);
+    }
+  }
+  if (type === 'ripper' && recoil <= 0) {
+    // The loaded sawblade spins behind the housing until it is thrown.
+    const spin = time * 14;
+    for (let i = 0; i < 8; i++) {
+      const a = spin + (i / 8) * Math.PI * 2;
+      g.fillStyle = i % 2 ? PAL.k6 : level >= 3 ? PAL.r2 : PAL.k5;
+      g.fillRect(Math.round(cx + Math.cos(a) * 5.5) - 1, Math.round(cy + Math.sin(a) * 5.5) - 1, 2, 2);
+    }
+  }
+  if (type === 'james') {
+    // Corner studs in four shifting colours instead of the usual level marks.
+    for (const [i, [a, b]] of [[2, 2], [13, 2], [13, 13], [2, 13]].entries()) {
+      g.fillStyle = hue(time * 120 + i * 90);
+      g.fillRect(x + a, y + b, 1, 1);
     }
   }
   const head = HEADS[type];
@@ -407,6 +490,28 @@ export function drawTowerSprite(
       g.fillRect(cx - 2, cy + 4, 4, 1);
     }
   }
+  if (type === 'blight') {
+    g.fillStyle = Math.sin(time * 6) > 0 ? PAL.r3 : PAL.r2;
+    g.fillRect(cx - 1, cy - 1, 1, 1);
+  }
+  if (type === 'warden') {
+    g.fillStyle = pulse > 0 ? PAL.k7 : Math.sin(time * 3) > 0 ? PAL.r2 : PAL.r1;
+    g.fillRect(cx - 1, cy - 1, 2, 2);
+    if (level >= 3) {
+      g.fillStyle = PAL.r2;
+      g.fillRect(cx - 4, cy - 4, 1, 1);
+      g.fillRect(cx + 3, cy - 4, 1, 1);
+    }
+  }
+  if (type === 'orbital') {
+    g.fillStyle = pulse > 0 ? PAL.k7 : Math.sin(time * 2.5) > 0.6 ? PAL.r3 : PAL.r1;
+    g.fillRect(cx - 1, cy - 5, 2, 1);
+  }
+  if (type === 'james') {
+    // The gem at its heart, flaring white for a moment after each shot.
+    g.fillStyle = pulse > 0 ? PAL.k7 : hue(time * 160);
+    g.fillRect(cx - 1, cy - 1, 2, 2);
+  }
   if (type === 'tesla') {
     g.fillStyle = Math.random() < 0.5 ? PAL.r3 : PAL.k7;
     g.fillRect(cx - 1, cy - 4, 2, 1);
@@ -414,6 +519,78 @@ export function drawTowerSprite(
   // level pips along the bottom of the base
   g.fillStyle = PAL.k7;
   for (let i = 0; i < level; i++) g.fillRect(x + 6 + i * 2, y + 14, 1, 1);
+}
+
+/* ------------------------------------------------------------- placeables */
+
+// wear runs 1 (fresh) to 0 (about to break); ready is a Shock Trap's charge.
+export function drawTrapSprite(
+  g: CanvasRenderingContext2D,
+  type: TrapType,
+  x: number,
+  y: number,
+  time: number,
+  wear = 1,
+  ready = true,
+) {
+  switch (type) {
+    case 'spikes': {
+      const tip = wear > 0.3 ? PAL.k7 : PAL.k5;
+      for (const [a, b] of [[3, 3], [8, 2], [12, 4], [2, 8], [7, 7], [12, 9], [4, 12], [9, 12], [13, 13]]) {
+        g.fillStyle = PAL.k1;
+        g.fillRect(x + a - 1, y + b + 1, 3, 1);
+        g.fillStyle = PAL.k4;
+        g.fillRect(x + a - 1, y + b, 3, 1);
+        g.fillStyle = tip;
+        g.fillRect(x + a, y + b - 1, 1, 1);
+      }
+      break;
+    }
+    case 'tar': {
+      g.fillStyle = PAL.k1;
+      fillDisc(g, x + 8, y + 8, 6);
+      g.fillStyle = PAL.k0;
+      fillDisc(g, x + 8, y + 8, 4);
+      // Slow bubbles rising through the pitch.
+      for (let i = 0; i < 3; i++) {
+        const k = (time * 0.8 + i / 3) % 1;
+        g.fillStyle = k < 0.8 ? PAL.k3 : PAL.k5;
+        g.fillRect(x + 5 + i * 3, y + 10 - Math.floor(k * 5), 1, 1);
+      }
+      break;
+    }
+    case 'barricade': {
+      g.fillStyle = PAL.k1;
+      g.fillRect(x + 2, y + 3, 13, 12);
+      g.fillStyle = PAL.k3;
+      g.fillRect(x + 2, y + 2, 12, 12);
+      g.fillStyle = PAL.k5;
+      g.fillRect(x + 2, y + 2, 12, 1);
+      g.fillRect(x + 2, y + 7, 12, 1);
+      g.fillRect(x + 2, y + 13, 12, 1);
+      g.fillStyle = wear > 0.35 ? PAL.r1 : PAL.r0;
+      for (let i = 0; i < 10; i++) {
+        g.fillRect(x + 3 + i, y + 3 + Math.floor(i * 0.4), 1, 1);
+        g.fillRect(x + 3 + i, y + 12 - Math.floor(i * 0.4), 1, 1);
+      }
+      break;
+    }
+    case 'shock': {
+      g.fillStyle = PAL.k1;
+      g.fillRect(x + 3, y + 4, 11, 11);
+      g.fillStyle = PAL.k4;
+      g.fillRect(x + 3, y + 3, 10, 10);
+      g.fillStyle = PAL.k2;
+      g.fillRect(x + 4, y + 4, 8, 8);
+      g.fillStyle = ready ? (Math.sin(time * 10) > 0 ? PAL.r3 : PAL.r2) : PAL.k3;
+      g.fillRect(x + 7, y + 7, 2, 2);
+      if (ready) {
+        g.fillRect(x + 5, y + 5, 1, 1);
+        g.fillRect(x + 10, y + 10, 1, 1);
+      }
+      break;
+    }
+  }
 }
 
 /* ------------------------------------------------------------- primitives */
@@ -521,6 +698,23 @@ export function towerIcon(type: TowerType, level = 1): string {
     c.width = TILE;
     c.height = TILE;
     drawTowerSprite(c.getContext('2d')!, type, level, 0, 0, -Math.PI / 4, 0, 0);
+    url = c.toDataURL();
+    iconCache.set(key, url);
+  }
+  return url;
+}
+
+export function trapIcon(type: TrapType): string {
+  const key = `p:${type}`;
+  let url = iconCache.get(key);
+  if (!url) {
+    const c = document.createElement('canvas');
+    c.width = TILE;
+    c.height = TILE;
+    const g = c.getContext('2d')!;
+    g.fillStyle = PAL.k3;
+    g.fillRect(0, 0, TILE, TILE);
+    drawTrapSprite(g, type, 0, 0, 0);
     url = c.toDataURL();
     iconCache.set(key, url);
   }

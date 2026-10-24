@@ -345,7 +345,7 @@ export class Director {
       const i = Math.floor((t - T.montage) / BAR);
       const m = MONTAGE[i];
       const u = t - (T.montage + i * BAR);
-      const tag = `TOWER ${String(TOWER_ORDER.indexOf(m.type) + 1).padStart(2, '0')} / 11`;
+      const tag = `TOWER ${String(TOWER_ORDER.indexOf(m.type) + 1).padStart(2, '0')} / ${TOWER_ORDER.length}`;
       this.card(g, u, tag, TOWERS[m.type].name.toUpperCase(), m.line, 0, m.right);
     }
 
@@ -488,7 +488,8 @@ export class Director {
     this.grid(g, t);
     this.text(g, '11 TOWERS', VW / 2, 250, 112, PAL.k7, { align: 'center', ghost: u, spacing: 6 });
     this.text(g, 'THREE LEVELS EACH. UPGRADE EVERYTHING.', VW / 2, 350, 30, PAL.k5, { align: 'center', spacing: 6 });
-    const step = 156;
+    // Squeeze the lineup to fit however many towers there are.
+    const step = Math.min(156, (VW - 200) / (TOWER_ORDER.length - 1));
     const x0 = VW / 2 - (step * (TOWER_ORDER.length - 1)) / 2;
     TOWER_ORDER.forEach((type, i) => {
       const k = clamp01((u - i * S16) / 0.12);

@@ -410,7 +410,7 @@ kbd {
   font-size: 13px;
 }
 
-.shop-item:hover:not(:disabled) {
+.shop-item:hover:not(.is-off) {
   background: var(--k3);
 }
 
@@ -424,7 +424,7 @@ kbd {
   color: var(--k7);
 }
 
-.shop-item:disabled {
+.shop-item.is-off {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -1000,16 +1000,260 @@ kbd {
 
 /* ---------------------------------------------------------- shop locks */
 
-.shop-item.is-locked:disabled {
+.shop-item.is-locked.is-off {
   opacity: 0.35;
 }
 
-.shop-item.is-locked img {
-  filter: grayscale(1) brightness(0.6);
+.shop-mystery {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--k1);
+  color: var(--k5);
+  font-size: 20px;
 }
 
 .shop-item.is-locked .shop-cost {
   color: var(--k5);
+}
+
+/* ----------------------------------------------------------- shop tabs */
+
+.shop-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--k3);
+}
+
+.shop-tab {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--k5);
+  font-family: var(--font);
+  font-size: 10px;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shop-tab:hover {
+  color: var(--k7);
+  background: var(--k2);
+}
+
+.shop-tab.is-active {
+  color: var(--k0);
+  background: var(--k7);
+}
+
+.shop-tab:focus-visible {
+  outline: 2px solid var(--r2);
+  outline-offset: -2px;
+}
+
+.shop-item kbd.is-blank {
+  visibility: hidden;
+}
+
+.perk-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--k1);
+  color: var(--k6);
+  font-size: 20px;
+}
+
+.icon48.perk-icon {
+  font-size: 30px;
+}
+
+.shop-item.is-owned.is-off {
+  opacity: 0.7;
+}
+
+.shop-item.is-owned .perk-icon {
+  color: var(--r3);
+}
+
+.shop-card-kind {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--k4);
+  margin-bottom: 2px;
+}
+
+/* ---------------------------------------------------------- shop card */
+
+.shop-card {
+  position: fixed;
+  z-index: 50;
+  width: 240px;
+  padding: 12px;
+  pointer-events: none;
+  --bc: var(--k4);
+}
+
+.shop-card .insp-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.shop-card .insp-head h3 {
+  text-transform: uppercase;
+}
+
+.shop-card .stats {
+  margin-bottom: 8px;
+}
+
+.shop-card .shop-mystery {
+  width: 48px;
+  height: 48px;
+  font-size: 28px;
+}
+
+.shop-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--k6);
+}
+
+.shop-card-foot > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shop-card.is-legendary {
+  animation: legendary-frame 3s linear infinite;
+}
+
+/* ---------------------------------------------------------- legendary */
+
+/* The James is the only thing in the game drawn in full colour. */
+.legendary-text {
+  background: linear-gradient(90deg, #ff3b5c, #ff9a1f, #ffe83a, #3dff8f, #2fd4ff, #9a6bff, #ff4fd8, #ff3b5c) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: legendary-slide 2.4s linear infinite;
+}
+
+.shop-item.is-legendary {
+  position: relative;
+  animation: legendary-frame 3s linear infinite;
+}
+
+.shop-item.is-legendary.is-locked.is-off {
+  opacity: 1;
+  background: var(--k1);
+}
+
+.shop-item.is-legendary .shop-name {
+  font-weight: 700;
+}
+
+.shop-item.is-legendary .shop-name:not(.legendary-text) {
+  background: linear-gradient(90deg, #ff3b5c, #ff9a1f, #ffe83a, #3dff8f, #2fd4ff, #9a6bff, #ff4fd8, #ff3b5c) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: legendary-slide 2.4s linear infinite;
+}
+
+.shop-item.is-legendary.is-locked .shop-cost {
+  color: var(--k6);
+}
+
+.is-legendary .shop-mystery {
+  position: relative;
+  background: var(--k0);
+  color: #ff3b5c;
+  font-size: 22px;
+  animation: legendary-hue 2s linear infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* Two pixel sparkles twinkling off the mystery icon. */
+.is-legendary .shop-mystery::before,
+.is-legendary .shop-mystery::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: currentColor;
+  animation: legendary-twinkle 1.1s steps(2, end) infinite;
+}
+
+.is-legendary .shop-mystery::before {
+  top: 2px;
+  right: 3px;
+}
+
+.is-legendary .shop-mystery::after {
+  bottom: 3px;
+  left: 2px;
+  animation-delay: 0.55s;
+}
+
+@keyframes legendary-slide {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes legendary-hue {
+  to {
+    filter: drop-shadow(0 0 4px currentColor) hue-rotate(360deg);
+  }
+}
+
+@keyframes legendary-twinkle {
+  0% {
+    opacity: 1;
+    transform: scale(1.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes legendary-frame {
+  0%, 100% { box-shadow: inset 0 0 0 1px #ff3b5c, 0 0 8px #ff3b5c66; }
+  16% { box-shadow: inset 0 0 0 1px #ff9a1f, 0 0 8px #ff9a1f66; }
+  33% { box-shadow: inset 0 0 0 1px #ffe83a, 0 0 8px #ffe83a66; }
+  50% { box-shadow: inset 0 0 0 1px #3dff8f, 0 0 8px #3dff8f66; }
+  66% { box-shadow: inset 0 0 0 1px #2fd4ff, 0 0 8px #2fd4ff66; }
+  83% { box-shadow: inset 0 0 0 1px #9a6bff, 0 0 8px #9a6bff66; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legendary-text,
+  .shop-item.is-legendary,
+  .shop-item.is-legendary .shop-name,
+  .is-legendary .shop-mystery,
+  .is-legendary .shop-mystery::before,
+  .is-legendary .shop-mystery::after {
+    animation: none;
+  }
 }
 
 /* ------------------------------------------------------------- unlocks */

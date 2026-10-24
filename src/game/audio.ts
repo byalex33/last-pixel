@@ -2,7 +2,8 @@ export type SfxName =
   | 'shoot' | 'thump' | 'boom' | 'rail' | 'zap' | 'frost' | 'die' | 'bigdie'
   | 'leak' | 'build' | 'upgrade' | 'sell' | 'wave' | 'boss' | 'clear'
   | 'click' | 'error' | 'win' | 'lose'
-  | 'flame' | 'laser' | 'mine' | 'quake' | 'coin' | 'jam' | 'type' | 'slam';
+  | 'flame' | 'laser' | 'mine' | 'quake' | 'coin' | 'jam' | 'type' | 'slam'
+  | 'saw' | 'spit' | 'acid' | 'ward' | 'lock' | 'strike' | 'snipe';
 
 class Sfx {
   private ctx: AudioContext | null = null;
@@ -147,6 +148,47 @@ class Sfx {
           this.tone(95, 24, 0.7, 'triangle', 0.32);
           this.tone(60, 30, 0.25, 'square', 0.12);
           this.noise(0.55, 0.45, 1600);
+        }
+        break;
+      case 'saw':
+        if (this.gate(name, 0.1)) {
+          this.tone(500, 1600, 0.18, 'sawtooth', 0.035);
+          this.noise(0.15, 0.08, 7000);
+        }
+        break;
+      case 'spit':
+        if (this.gate(name, 0.1)) this.tone(260, 520, 0.09, 'square', 0.04);
+        break;
+      case 'acid':
+        if (this.gate(name, 0.08)) {
+          this.noise(0.22, 0.14, 1400);
+          this.tone(220, 90, 0.18, 'triangle', 0.06);
+        }
+        break;
+      case 'ward':
+        if (this.gate(name, 0.15)) {
+          this.tone(520, 780, 0.18, 'triangle', 0.05);
+          this.tone(1040, 1560, 0.12, 'sine', 0.025, 0.04);
+        }
+        break;
+      case 'lock':
+        if (this.gate(name, 0.2)) [1760, 1760].forEach((f, i) => this.tone(f, f, 0.04, 'square', 0.025, i * 0.09));
+        break;
+      case 'strike':
+        if (this.gate(name, 0.12)) {
+          this.tone(2600, 180, 0.35, 'sawtooth', 0.06);
+          this.noise(0.5, 0.3, 2500);
+        }
+        break;
+      case 'snipe':
+        // A hard crack, a sub drop, then the echo rolling off the walls.
+        if (this.gate(name, 0.15)) {
+          this.noise(0.08, 0.55, 9000);
+          this.tone(1800, 60, 0.22, 'sawtooth', 0.12);
+          this.tone(110, 30, 0.6, 'triangle', 0.3);
+          this.noise(0.5, 0.14, 1800, 0.12);
+          this.noise(0.4, 0.07, 1200, 0.3);
+          [1319, 1760, 2637].forEach((f, i) => this.tone(f, f, 0.12, 'square', 0.025, 0.05 + i * 0.05));
         }
         break;
       case 'type':
