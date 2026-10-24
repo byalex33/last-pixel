@@ -139,6 +139,8 @@ export class Game {
   private strikes: Strike[] = [];
   private traps: Trap[] = [];
   readonly perks = new Set<PerkType>();
+  // Perks carried into this round. Restarting it starts over with only these.
+  readonly startPerks: string[];
   private snipes: Snipe[] = [];
   private flashT = 0;
   private buffs = new Map<number, number>();
@@ -218,11 +220,17 @@ export class Game {
     this.decals.width = W;
     this.decals.height = H;
     this.dctx = this.decals.getContext('2d')!;
-    this.reached = loadProgress().unlocked;
-    if (snap?.mapId === map.id) this.restore(snap);
-    else {
+    const progress = loadProgress();
+    this.reached = progress.unlocked;
+    if (snap?.mapId === map.id) {
+      // Older saves fall back to the carried perks: right mid-round, and mid-Endless
+      // they are what was owned at the win, which is what restarting used to keep.
+      this.startPerks = Array.isArray(snap.startPerks) ? snap.startPerks : progress.perks ?? [];
+      this.restore(snap);
+    } else {
       // A fresh round starts with every perk carried over from the rounds before it.
-      this.addPerks(loadProgress().perks ?? []);
+      this.startPerks = progress.perks ?? [];
+      this.addPerks(this.startPerks);
       this.lives = this.maxLives;
       this.checkpoint();
     }
@@ -293,6 +301,7 @@ export class Game {
       mines: this.mines.map(({ x, y, dmg, splash, src }) => ({ tx: src.tx, ty: src.ty, x, y, dmg, splash })),
       traps: this.traps.map(({ type, tx, ty, uses }) => ({ type, tx, ty, uses })),
       perks: [...this.perks],
+      startPerks: [...this.startPerks],
     });
   }
 
@@ -324,7 +333,8 @@ export class Game {
 
   /* ------------------------------------------------------------ lifecycle */
 
-  attach(canvas: HTMLCanvasElement) {
+  // holdIntro keeps the round banner back until showIntro(), so it isn't lost behind the story.
+  attach(canvas: HTMLCanvasElement, holdIntro = false) {
     this.detach();
     this.canvas = canvas;
     canvas.width = W;
@@ -338,10 +348,15 @@ export class Game {
     window.addEventListener('keydown', this.onKey);
     this.lastT = performance.now();
     this.raf = requestAnimationFrame(this.frame);
-    if (this.intro) {
-      this.showBanner(...this.intro);
-      this.intro = null;
-    }
+    if (!holdIntro) this.showIntro();
+  }
+
+  // Plays the round banner once; later calls do nothing.
+  showIntro() {
+    if (!this.intro) return;
+    this.showBanner(...this.intro);
+    this.intro = null;
+    this.touch();
   }
 
   detach() {
@@ -403,10 +418,25 @@ export class Game {
     return this.towers.find((t) => t.id === this.selectedId);
   }
 
+  // What this run's perks scale every tower's damage, attack speed and reach by.
+  private get perkDmg() { return this.perks.has('sharp') ? PERK_DMG : 1; }
+  private get perkRate() { return this.perks.has('overclock') ? PERK_RATE : 1; }
+  private get perkRange() { return this.perks.has('scope') ? PERK_RANGE : 1; }
+
   // A tower's stats as they stand this round, with Long Sight's reach added.
   level(t: Tower): TowerLevel {
     const L = TOWERS[t.type].levels[t.level - 1];
-    return this.perks.has('scope') ? { ...L, range: L.range * PERK_RANGE } : L;
+    return this.perkRange !== 1 ? { ...L, range: L.range * this.perkRange } : L;
+  }
+
+  // A tower's stats as played with this run's perks, for the UI: Hollow Points on hits and burn,
+  // Overclock on attack speed, Long Sight on reach. Beacon buffs are left out, they depend on placement.
+  stats(type: TowerType, level: number): TowerLevel {
+    const L = TOWERS[type].levels[level - 1];
+    return {
+      ...L, dmg: L.dmg * this.perkDmg, rate: L.rate / this.perkRate, range: L.range * this.perkRange,
+      burn: L.burn && L.burn * this.perkDmg,
+    };
   }
 
   sellValue(t: Tower) {
@@ -472,7 +502,8 @@ export class Game {
   }
 
   sendWave() {
-    if (this.waveActive || this.status !== 'playing') return;
+    // Never behind the pause menu or an overlay holding the game still.
+    if (this.paused || this.waveActive || this.status !== 'playing') return;
     this.wave++;
     this.spawns = buildWave(this.wave, this.round).map((g) => ({ ...g, spawned: 0 }));
     this.waveT = 0;
@@ -1182,8 +1213,8 @@ export class Game {
   private updateTower(t: Tower, dt: number) {
     const L = this.level(t);
     const buff = this.buffOf(t);
-    const dmgMul = buffDmg(buff) * (this.perks.has('sharp') ? PERK_DMG : 1);
-    const rate = L.rate / buffRate(buff) / (this.perks.has('overclock') ? PERK_RATE : 1);
+    const dmgMul = buffDmg(buff) * this.perkDmg;
+    const rate = L.rate / buffRate(buff) / this.perkRate;
     t.cd -= dt;
     t.recoil = Math.max(0, t.recoil - dt);
     t.pulse = Math.max(0, t.pulse - dt);
@@ -1973,7 +2004,7 @@ export class Game {
       const ok = this.canBuild(h.tx, h.ty) && this.gold >= TOWERS[this.placing].levels[0].cost;
       const cx = h.tx * TILE + 8;
       const cy = h.ty * TILE + 8;
-      this.drawRange(g, cx, cy, TOWERS[this.placing].levels[0].range, ok ? PAL.k6 : PAL.r2);
+      this.drawRange(g, cx, cy, TOWERS[this.placing].levels[0].range * this.perkRange, ok ? PAL.k6 : PAL.r2);
       g.globalAlpha = ok ? 0.75 : 0.35;
       drawTowerSprite(g, this.placing, 1, h.tx * TILE, h.ty * TILE, -Math.PI / 2, 0, this.rt);
       g.globalAlpha = 1;

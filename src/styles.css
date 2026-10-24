@@ -333,6 +333,43 @@ kbd {
   }
 }
 
+/* Narrower desktop windows: a tighter HUD keeps the one line from running into the buttons. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .hud {
+    padding: 8px 12px;
+    gap: 8px 10px;
+  }
+
+  .hud-stats {
+    gap: 12px;
+  }
+
+  .hud-actions {
+    gap: 4px;
+  }
+
+  .hud-actions .btn {
+    height: 30px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .stat {
+    font-size: 15px;
+  }
+
+  .stat svg {
+    font-size: 18px;
+  }
+}
+
+/* Too narrow for more than a stub of the map name, so drop it and keep the round number. */
+@media (min-width: 901px) and (max-width: 1000px) {
+  .stat.round small {
+    display: none;
+  }
+}
+
 .stat.danger {
   animation: danger 0.6s steps(2) infinite;
 }
@@ -387,6 +424,7 @@ kbd {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .shop {
@@ -833,7 +871,7 @@ kbd {
 
   .shop {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
   }
 
@@ -861,6 +899,20 @@ kbd {
   .shop-item .icon32 {
     width: 24px;
     height: 24px;
+  }
+
+  /* Only the open tab spells out its name; the rest keep theirs for screen readers and the tooltip. */
+  .shop-tab:not(.is-active) {
+    flex: none;
+    padding: 6px 8px;
+  }
+
+  .shop-tab:not(.is-active) .shop-tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 
   .tip {
@@ -1038,6 +1090,47 @@ kbd {
   pointer-events: none;
 }
 
+/* In the won/lost dialog the pop-ups join its flow above the box, so they never cover it.
+   The overlay grid splits its spare height between the two rows; the margins push the pair together. */
+.award-stack.is-docked {
+  position: static;
+  z-index: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 440px;
+  margin: auto 0 8px;
+}
+
+.award-stack.is-docked + .modal {
+  margin-top: 0;
+}
+
+/* Docked, each pop-up shrinks to a chip so a round's worth of them wraps into a row or two. */
+.award-stack.is-docked {
+  gap: 6px;
+}
+
+.award-stack.is-docked .award {
+  min-width: 0;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+}
+
+.award-stack.is-docked .award-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
+}
+
+.award-stack.is-docked .award-kicker {
+  display: none;
+}
+
+.award-stack.is-docked .award strong {
+  font-size: 11px;
+}
+
 .award {
   --bc: var(--r2);
   display: flex;
@@ -1180,6 +1273,7 @@ kbd {
 
 .shop-tab {
   flex: 1 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1193,6 +1287,17 @@ kbd {
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.shop-tab svg {
+  flex: none;
+}
+
+/* Should the row still run short, labels trim rather than push the panel wider. */
+.shop-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shop-tab:hover {
@@ -1800,6 +1905,42 @@ kbd {
 .modal .story-line {
   color: var(--k6);
   line-height: 1.5;
+}
+
+/* Sized by the board, so a 2x or smaller board fits the whole story without a scroll. */
+.story-overlay {
+  container-type: size;
+}
+
+@container (max-height: 420px) {
+  .story-overlay .modal.story {
+    padding: 16px 20px;
+    gap: 8px;
+  }
+
+  .story-overlay .modal.story .story-title {
+    font-size: 28px;
+  }
+
+  .story-overlay .modal.story p {
+    line-height: 1.4;
+  }
+}
+
+@container (max-height: 300px) {
+  .story-overlay .modal.story {
+    padding: 12px 16px;
+    gap: 6px;
+  }
+
+  .story-overlay .modal.story .story-title {
+    font-size: 22px;
+  }
+
+  .story-overlay .modal.story p {
+    font-size: 11px;
+    line-height: 1.35;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

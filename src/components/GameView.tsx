@@ -27,8 +27,9 @@ interface Props {
   snapshot?: Snapshot;
   // While true the game is not attached: no ticking, input or intro banner.
   paused?: boolean;
-  onRestart: () => void;
-  onNextRound: () => void;
+  // Restarting keeps only the perks the round started with; moving on keeps every perk owned.
+  onRestart: (perks: string[]) => void;
+  onNextRound: (perks: string[]) => void;
   onNewCampaign: () => void;
 }
 
@@ -45,6 +46,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   const chapter = LORE[map.id];
   const closeStory = () => {
     setStory(false);
+    game.showIntro();
     if (loadStorySeen() < game.round) saveStorySeen(game.round);
   };
   // Wait for the loader to clear so the typing is seen and keys still reach the loader.
@@ -62,10 +64,12 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
     return () => game.setPaused(was);
   }, [game, blocked]);
 
+  const retry = () => onRestart(game.startPerks);
+  const nextRound = () => onNextRound([...game.perks]);
   // Only ask once a wave has been played; a fresh or lost round has nothing to lose.
   const restart = () => {
     if (game.wave > 0 && game.status !== 'lost') setConfirmRestart(true);
-    else onRestart();
+    else retry();
   };
 
   // While the restart check or achievements list is open, keys never reach the game; Escape closes it.
@@ -85,7 +89,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
 
   useEffect(() => {
     if (paused) return;
-    game.attach(canvasRef.current!);
+    // If the story is about to open, its close plays the round banner instead.
+    game.attach(canvasRef.current!, story && !!chapter);
     window.scrollTo(0, 0);
     if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
     return () => game.detach();
@@ -149,7 +154,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           </span>
         </div>
         <div className="hud-actions">
-          <Btn variant="primary" onClick={() => game.sendWave()} disabled={blocked || game.waveActive || game.status !== 'playing'}>
+          <Btn variant="primary" onClick={() => game.sendWave()} disabled={blocked || game.paused || game.waveActive || game.status !== 'playing'}>
             <PiPlayFill />
             {game.waveActive ? `${game.remaining()} left` : game.wave === 0 ? 'Start' : 'Next wave'}
           </Btn>
@@ -189,7 +194,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
           <div className="screen-wrap" style={{ width: W * scale, height: H * scale }}>
             <canvas ref={canvasRef} className="screen pixel" style={{ width: W * scale, height: H * scale }} />
             <EnemyCard game={game} scale={scale} />
-            <AwardToasts game={game} />
+            {/* Pop-ups never float over a dialog: they wait for it to close, or dock in the won/lost box. */}
+            {!blocked && !game.paused && game.status === 'playing' && <AwardToasts game={game} />}
 
             {game.banner && (
               <div key={game.banner.id} className={`banner${game.banner.danger ? ' danger' : ''}`}>
@@ -210,7 +216,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                     <Btn variant="primary" onClick={() => game.togglePause()}><PiPlayFill /> Resume</Btn>
                     <Btn onClick={restart}><PiArrowCounterClockwiseBold /> Restart round</Btn>
                     {game.nextUnlocked && (
-                      <Btn onClick={onNextRound}><PiArrowRightBold /> Next round</Btn>
+                      <Btn onClick={nextRound}><PiArrowRightBold /> Next round</Btn>
                     )}
                   </div>
                 </div>
@@ -219,6 +225,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
 
             {game.status === 'lost' && (
               <div className="overlay">
+                <AwardToasts game={game} docked />
                 <div className="modal px-box">
                   <PiSkullFill className="modal-icon red" />
                   <h2>The portal has fallen</h2>
@@ -229,12 +236,16 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                   <div className="modal-actions">
                     {game.endless ? (
                       game.hasNextRound ? (
-                        <Btn variant="primary" onClick={onNextRound}><PiArrowRightBold /> Round {game.round + 2}</Btn>
+                        <Btn variant="primary" onClick={nextRound}><PiArrowRightBold /> Round {game.round + 2}</Btn>
                       ) : (
-                        <Btn variant="primary" onClick={onNewCampaign}><PiArrowCounterClockwiseBold /> New campaign</Btn>
+                        // No round left to go on to: play this one again, or start the campaign over.
+                        <>
+                          <Btn variant="primary" onClick={retry}><PiArrowCounterClockwiseBold /> Retry round</Btn>
+                          <Btn onClick={onNewCampaign}><PiFlagFill /> New campaign</Btn>
+                        </>
                       )
                     ) : (
-                      <Btn variant="primary" onClick={onRestart}><PiArrowCounterClockwiseBold /> Retry round</Btn>
+                      <Btn variant="primary" onClick={retry}><PiArrowCounterClockwiseBold /> Retry round</Btn>
                     )}
                   </div>
                 </div>
@@ -243,6 +254,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
 
             {game.status === 'won' && !confirmRestart && (
               <div className="overlay">
+                <AwardToasts game={game} docked />
                 <div className="modal px-box">
                   <PiTrophyFill className="modal-icon" />
                   <h2>{game.hasNextRound ? `Round ${game.round + 1} cleared` : 'The Last Pixel burns on'}</h2>
@@ -255,7 +267,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                   {game.hasNextRound && <UnlockList round={game.round + 1} />}
                   <div className="modal-actions">
                     {game.hasNextRound ? (
-                      <Btn variant="primary" onClick={onNextRound}><PiArrowRightBold /> Round {game.round + 2}</Btn>
+                      <Btn variant="primary" onClick={nextRound}><PiArrowRightBold /> Round {game.round + 2}</Btn>
                     ) : (
                       <Btn variant="primary" onClick={onNewCampaign}><PiArrowCounterClockwiseBold /> New campaign</Btn>
                     )}
@@ -278,7 +290,7 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                       : `You are on wave ${game.wave}. Restarting takes you back to wave 1.`}
                   </p>
                   <div className="modal-actions">
-                    <Btn onClick={onRestart}><PiArrowCounterClockwiseBold /> Restart</Btn>
+                    <Btn onClick={retry}><PiArrowCounterClockwiseBold /> Restart</Btn>
                     <Btn variant="primary" onClick={() => setConfirmRestart(false)} autoFocus><PiXBold /> Cancel</Btn>
                   </div>
                 </div>
@@ -288,7 +300,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
         </div>
 
         <aside className="side">
-          {!sel && !game.placing && tipOpen && (
+          {/* Kept while placing so the Build list never shifts under the cursor. */}
+          {!sel && tipOpen && (
             // Short screens drop the tip once the first wave is out (see .tip.is-old).
             <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
               <div className="tip-head">
@@ -321,12 +334,13 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                     role="tab"
                     aria-selected={tab === id}
                     className={`shop-tab${tab === id ? ' is-active' : ''}`}
+                    title={label}
                     onClick={() => {
                       setTab(id);
                       setPeek(null);
                     }}
                   >
-                    {icon} {label}
+                    {icon} <span className="shop-tab-label">{label}</span>
                   </button>
                 ))}
               </div>
@@ -462,7 +476,7 @@ function entryFor(game: Game, b: Buildable): ShopEntry {
     cost, unlock: def.unlock, locked, active: game.placing === b,
     off: locked || (game.gold < cost && game.placing !== b), legendary: def.legendary,
     hotkey: TOWER_KEYS[TOWER_ORDER.indexOf(b)].toUpperCase(),
-    rows: statRows(def.levels[0], undefined, def.global),
+    rows: statRows(game.stats(b, 1), undefined, def.global),
     act: () => game.toggleBuild(b),
   };
 }
@@ -487,7 +501,11 @@ function shopEntries(game: Game, tab: ShopTab): ShopEntry[] {
   return TOWER_ORDER.map((t) => entryFor(game, t));
 }
 
-const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+// Rounded first so perk-scaled numbers like 114.99999 read as 115, not 115.0.
+const num = (n: number) => {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+};
 const tiles = (n: number) => (n / 16).toFixed(1);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -558,8 +576,9 @@ function UnlockList({ round }: { round: number }) {
 
 function Inspector({ game, t }: { game: Game; t: Tower }) {
   const def = TOWERS[t.type];
-  const L = def.levels[t.level - 1];
-  const next = def.levels[t.level];
+  // Stats shown as played, perks included, for both columns of the upgrade preview.
+  const L = game.stats(t.type, t.level);
+  const next = t.level < def.levels.length ? game.stats(t.type, t.level + 1) : undefined;
   return (
     <section className="panel px-box inspector">
       <div className="insp-head">
