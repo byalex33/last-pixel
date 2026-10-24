@@ -22,9 +22,10 @@ export function App() {
   });
   const [phase, setPhase] = useState<'loading' | 'revealing' | 'done'>('loading');
 
-  // Starts a round afresh. The furthest round reached is kept, even by New campaign.
-  const startRound = (round: number) => {
-    setRun({ ...saveProgress({ round: clampRound(round) }), run: Date.now() });
+  // Starts a round afresh. The furthest round reached is kept, even by New campaign;
+  // carried perks are kept too, unless perks says otherwise.
+  const startRound = (round: number, perks?: string[]) => {
+    setRun({ ...saveProgress({ round: clampRound(round), perks }), run: Date.now() });
   };
 
   return (
@@ -38,7 +39,7 @@ export function App() {
         onNextRound={() => startRound(run.round + 1)}
         onNewCampaign={() => {
           saveStorySeen(-1);
-          startRound(0);
+          startRound(0, []);
         }}
       />
       {phase !== 'done' && (

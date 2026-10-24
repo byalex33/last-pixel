@@ -163,6 +163,8 @@ export class Game {
   placing: Buildable | null = null;
   selectedId: number | null = null;
   banner: Banner | null = null;
+  // The boss that reached the portal, if that is how the run ended.
+  killedBy: EnemyType | null = null;
   version = 0;
 
   private hover: { tx: number; ty: number } | null = null;
@@ -210,7 +212,12 @@ export class Game {
     this.dctx = this.decals.getContext('2d')!;
     this.reached = loadProgress().unlocked;
     if (snap?.mapId === map.id) this.restore(snap);
-    else this.checkpoint();
+    else {
+      // A fresh round starts with every perk carried over from the rounds before it.
+      this.addPerks(loadProgress().perks ?? []);
+      this.lives = this.maxLives;
+      this.checkpoint();
+    }
     const fresh = [
       ...TOWER_ORDER.filter((t) => TOWERS[t].unlock === this.round).map((t) => TOWERS[t].name),
       ...TRAP_ORDER.filter((t) => TRAPS[t].unlock === this.round).map((t) => TRAPS[t].name),
@@ -227,10 +234,7 @@ export class Game {
   private restore(s: Snapshot) {
     this.wave = s.wave;
     this.gold = s.gold;
-    for (const k of s.perks ?? []) {
-      if (k in PERKS && this.perkUnlocked(k as PerkType)) this.perks.add(k as PerkType);
-    }
-    if (this.perks.has('plating')) this.maxLives += PERK_LIVES;
+    this.addPerks(s.perks ?? []);
     this.lives = Math.min(this.maxLives, s.lives);
     this.kills = s.kills;
     this.endless = s.endless;
@@ -260,6 +264,13 @@ export class Game {
     }
   }
 
+  private addPerks(list: string[]) {
+    for (const k of list) {
+      if (k in PERKS && this.perkUnlocked(k as PerkType)) this.perks.add(k as PerkType);
+    }
+    if (this.perks.has('plating')) this.maxLives += PERK_LIVES;
+  }
+
   // Saves the round between waves. Reloading mid-wave replays that wave from its start.
   private checkpoint() {
     if (this.waveActive || this.status !== 'playing') return;
@@ -276,8 +287,8 @@ export class Game {
   }
 
   // Saving never lowers the furthest round reached; see saveProgress.
-  private save(round: number, snapshot?: Snapshot) {
-    this.reached = Math.max(this.reached, saveProgress({ round, snapshot }).unlocked);
+  private save(round: number, snapshot?: Snapshot, perks?: string[]) {
+    this.reached = Math.max(this.reached, saveProgress({ round, snapshot, perks }).unlocked);
   }
 
   get hasNextRound() {
@@ -1557,10 +1568,13 @@ export class Game {
     }
   }
 
+  // A boss that reaches the portal takes every life left with it.
   private leak(e: Enemy) {
     e.alive = false;
-    this.lives = Math.max(0, this.lives - e.dmg);
-    this.shake = Math.max(this.shake, 3 + e.dmg * 0.5);
+    const boss = isBoss(e.type);
+    if (boss && this.lives > 0) this.killedBy = e.type;
+    this.lives = boss ? 0 : Math.max(0, this.lives - e.dmg);
+    this.shake = Math.max(this.shake, boss ? 10 : 3 + e.dmg * 0.5);
     this.hurt = 0.5;
     for (let i = 0; i < 20; i++) this.spark(this.portal.x, this.portal.y, pick([PAL.r2, PAL.r3, PAL.k7]), 80, 0);
     sfx.play('leak');
@@ -1569,7 +1583,8 @@ export class Game {
       this.placing = null;
       saveBest(this.map.id, this.wave - 1);
       // Falling in endless still counts the round as beaten.
-      this.save(this.endless ? this.nextRound : this.round);
+      if (this.endless) this.save(this.nextRound, undefined, [...this.perks]);
+      else this.save(this.round);
       sfx.play('lose');
     }
     this.touch();
@@ -1598,7 +1613,8 @@ export class Game {
     if (this.wave >= TOTAL_WAVES && !this.endless) {
       this.status = 'won';
       this.placing = null;
-      this.save(this.nextRound);
+      // Everything owned now goes on to the next round.
+      this.save(this.nextRound, undefined, [...this.perks]);
       sfx.play('win');
     } else {
       this.showBanner('Wave clear', `+${bonus} gold`);

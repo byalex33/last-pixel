@@ -92,6 +92,7 @@ export interface TrapSave {
 export interface Progress {
   round: number; // index into MAPS of the round in progress
   unlocked: number; // index into MAPS of the furthest round reached, never below round
+  perks?: string[]; // perks carried into the round in progress from the rounds before it
   snapshot?: Snapshot;
 }
 
@@ -101,23 +102,27 @@ export function loadProgress(): Progress {
     const parsed = raw ? (JSON.parse(raw) as Partial<Progress>) : null;
     if (parsed && typeof parsed.round === 'number') {
       const { round, snapshot } = parsed;
+      const perks = Array.isArray(parsed.perks) ? parsed.perks.filter((k) => typeof k === 'string') : [];
       // Older saves only kept the round in progress. Endless is only offered once a round is
       // won, so an Endless checkpoint means the next round was already open.
       const unlocked = typeof parsed.unlocked === 'number'
         ? parsed.unlocked
         : Math.min(round + (snapshot?.endless ? 1 : 0), MAPS.length - 1);
-      return { round, unlocked: Math.max(round, unlocked), snapshot };
+      return { round, unlocked: Math.max(round, unlocked), perks, snapshot };
     }
   } catch {
     /* storage unavailable or corrupt */
   }
-  return { round: 0, unlocked: 0 };
+  return { round: 0, unlocked: 0, perks: [] };
 }
 
 // Saves the round in progress. The furthest round reached only ever rises, so restarting,
 // replaying or going Endless on an earlier round never locks a later one again.
-export function saveProgress({ round, snapshot }: { round: number; snapshot?: Snapshot }): Progress {
-  const progress: Progress = { round, unlocked: Math.max(round, loadProgress().unlocked), snapshot };
+// Carried perks are kept unless new ones are given: a round won passes on everything owned,
+// and a new campaign passes on none. Restarting keeps only what the round started with.
+export function saveProgress({ round, snapshot, perks }: { round: number; snapshot?: Snapshot; perks?: string[] }): Progress {
+  const prev = loadProgress();
+  const progress: Progress = { round, unlocked: Math.max(round, prev.unlocked), perks: perks ?? prev.perks, snapshot };
   try {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
   } catch {
@@ -143,6 +148,26 @@ export function loadStorySeen(): number {
 export function saveStorySeen(round: number) {
   try {
     localStorage.setItem(STORY_KEY, String(round));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/* ------------------------------------------------------------------ tip */
+
+const TIP_KEY = 'lastpixel.tip.v1';
+
+export function loadTipClosed(): boolean {
+  try {
+    return localStorage.getItem(TIP_KEY) === 'closed';
+  } catch {
+    return false;
+  }
+}
+
+export function saveTipClosed() {
+  try {
+    localStorage.setItem(TIP_KEY, 'closed');
   } catch {
     /* storage unavailable */
   }

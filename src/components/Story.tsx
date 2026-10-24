@@ -169,7 +169,7 @@ export function Story({ round, name, lines, onClose }: Props) {
         })}
         <div className="modal-actions">
           {done ? (
-            <Btn variant="primary" className="story-go" onClick={onClose}><PiPlayFill /> Hold the line</Btn>
+            <Btn variant="primary" className="story-go" onClick={onClose}><PiPlayFill /> Click to play</Btn>
           ) : (
             <span className="story-skip">Click or press any key to skip</span>
           )}

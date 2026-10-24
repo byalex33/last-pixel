@@ -10,7 +10,7 @@ import { H, W } from '../game/constants';
 import { Game, type Tower } from '../game/engine';
 import type { MapDef } from '../game/maps';
 import { EPILOGUE, LORE } from '../game/lore';
-import { loadStorySeen, saveStorySeen, type Snapshot } from '../game/storage';
+import { loadStorySeen, loadTipClosed, saveStorySeen, saveTipClosed, type Snapshot } from '../game/storage';
 import {
   ENEMIES, PERKS, PERK_ORDER, TARGET_MODES, TOTAL_WAVES, TOWERS, TOWER_KEYS, TOWER_ORDER, TRAPS, TRAP_ORDER, isTrap,
   type Buildable, type PerkType, type TowerLevel,
@@ -103,6 +103,12 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
   }, []);
 
   const sel = game.selected;
+  // Once closed, the tip stays closed for good.
+  const [tipOpen, setTipOpen] = useState(() => !loadTipClosed());
+  const closeTip = () => {
+    setTipOpen(false);
+    saveTipClosed();
+  };
   // The Build list entry under the mouse (or keyboard focus), shown as an info card beside it.
   const [peek, setPeek] = useState<{ id: string; rect: DOMRect } | null>(null);
   const [tab, setTab] = useState<ShopTab>('towers');
@@ -206,6 +212,9 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
                 <div className="modal px-box">
                   <PiSkullFill className="modal-icon red" />
                   <h2>The portal has fallen</h2>
+                  {game.killedBy && (
+                    <p className="red">{ENEMIES[game.killedBy].name} reached the portal and took every life with it.</p>
+                  )}
                   <p>You held out for {Math.max(0, game.wave - 1)} waves and destroyed {game.kills} foes.</p>
                   <div className="modal-actions">
                     {game.endless ? (
@@ -267,6 +276,26 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
         </div>
 
         <aside className="side">
+          {!sel && !game.placing && tipOpen && (
+            // Short screens drop the tip once the first wave is out (see .tip.is-old).
+            <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
+              <div className="tip-head">
+                <h3>Tip</h3>
+                <Btn variant="ghost" className="insp-close" onClick={closeTip} aria-label="Close tip">
+                  <PiXBold />
+                </Btn>
+              </div>
+              <p className="hint for-mouse">
+                Pick a tower, then click an empty tile to build it. Placeables go on the road. Click a tower to upgrade or sell it.
+                Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
+              </p>
+              <p className="hint for-touch">
+                Pick a tower, then tap an empty tile twice to build it. Placeables go on the road. Tap a tower to upgrade or sell it,
+                or tap an enemy to see its stats.
+              </p>
+            </section>
+          )}
+
           {/* A selected tower takes the Build list's place so Upgrade and Sell never need a scroll. */}
           {sel ? (
             <Inspector game={game} t={sel} />
@@ -332,21 +361,8 @@ export function GameView({ map, snapshot, paused, onRestart, onNextRound, onNewC
             </section>
           )}
 
-          {sel ? null : game.placing ? (
+          {!sel && game.placing && (
             <PlacingInfo entry={entryFor(game, game.placing)} onCancel={() => game.toggleBuild(null)} />
-          ) : (
-            // Short screens drop the tip once the first wave is out (see .tip.is-old).
-            <section className={`panel px-box tip${game.wave > 0 ? ' is-old' : ''}`}>
-              <h3>Tip</h3>
-              <p className="hint for-mouse">
-                Pick a tower, then click an empty tile to build it. Placeables go on the road. Click a tower to upgrade or sell it.
-                Hover over an enemy to see its stats. Press <kbd>Space</kbd> to send the next wave.
-              </p>
-              <p className="hint for-touch">
-                Pick a tower, then tap an empty tile twice to build it. Placeables go on the road. Tap a tower to upgrade or sell it,
-                or tap an enemy to see its stats.
-              </p>
-            </section>
           )}
 
           <section className="panel px-box">
@@ -661,7 +677,7 @@ function ShopCard({ entry: en, rect, short }: { entry: ShopEntry; rect: DOMRect;
           )}
           <p className="shop-card-foot">
             {en.owned ? (
-              <span><PiCheckBold /> Owned this round</span>
+              <span><PiCheckBold /> Owned for the campaign</span>
             ) : (
               <span className={short ? 'red' : undefined}><PiCoinsFill /> {en.cost}</span>
             )}

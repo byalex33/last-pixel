@@ -556,6 +556,12 @@ kbd {
   }
 }
 
+.tip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
 /* On short screens the tip makes way for the wave preview once play is under way. */
 @media (max-height: 820px) {
   .tip.is-old {

@@ -306,7 +306,7 @@ export const isTrap = (b: Buildable): b is TrapType => b in TRAPS;
 
 /* ---------------------------------------------------------------- perks */
 
-// One-off upgrades bought for the rest of the round.
+// One-off upgrades that last the rest of the campaign, carried from round to round.
 export type PerkType = 'sharp' | 'plating' | 'salvage' | 'interest' | 'overclock' | 'scope';
 
 export interface PerkDef {
@@ -320,7 +320,7 @@ export const PERK_ORDER: PerkType[] = ['sharp', 'plating', 'salvage', 'interest'
 
 export const PERKS: Record<PerkType, PerkDef> = {
   sharp: { name: 'Hollow Points', blurb: 'Every tower deals 15% more damage.', unlock: 0, cost: 300 },
-  plating: { name: 'Plating', blurb: 'The portal gains 5 lives, and 5 more maximum.', unlock: 0, cost: 200 },
+  plating: { name: 'Plating', blurb: 'The portal gains 5 lives, and 5 more maximum every round.', unlock: 0, cost: 200 },
   salvage: { name: 'Salvage', blurb: 'Towers sell back for 90% of what you spent, up from 70%.', unlock: 0, cost: 150 },
   interest: { name: 'Interest', blurb: 'Each wave cleared pays 10% of your unspent gold, up to 60.', unlock: 1, cost: 250 },
   overclock: { name: 'Overclock', blurb: 'Every tower attacks 15% faster.', unlock: 2, cost: 350 },
@@ -359,10 +359,10 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   armor: { name: 'Husk', trait: 'Armored', desc: 'A plated shell that shrugs off small hits.', hp: 60, speed: 16, gold: 9, dmg: 2, armor: 5 },
   splitter: { name: 'Splitter', trait: 'Splits into runners', desc: 'Bursts into three Runners when killed.', hp: 50, speed: 17, gold: 6, dmg: 2, armor: 0, splits: 3 },
   wisp: { name: 'Wisp', trait: 'Immune to slow', desc: 'A flickering spirit that cold cannot touch.', hp: 34, speed: 27, gold: 6, dmg: 1, armor: 0, slowImmune: true },
-  boss: { name: 'Colossus', trait: 'Boss', desc: 'Arrives every 10 waves. Tough, armored and hits the portal hard.', hp: 650, speed: 9, gold: 120, dmg: 6, armor: 3, boss: true },
+  boss: { name: 'Colossus', trait: 'Boss', desc: 'Arrives every 10 waves. Tough and armored. If it reaches the portal, the run is over.', hp: 650, speed: 9, gold: 120, dmg: 6, armor: 3, boss: true },
   mender: { name: 'Mender', trait: 'Heals the horde', desc: 'Stitches torn Static back together, up to 200 health a pulse. Kill it first, or corrode its patients.', hp: 45, speed: 15, gold: 9, dmg: 2, armor: 0, heal: 0.1, healCap: 200 },
   glitch: { name: 'Glitch', trait: 'Blinks ahead', desc: 'Skips frames, jumping forward through your lines.', hp: 32, speed: 22, gold: 8, dmg: 2, armor: 0, blink: 22 },
-  eraser: { name: 'The Eraser', trait: 'Final boss', desc: 'What the Static saved for last. Everything it passes goes quiet.', hp: 2000, speed: 6, gold: 600, dmg: 20, armor: 6, boss: true, jam: 2.5 },
+  eraser: { name: 'The Eraser', trait: 'Final boss', desc: 'What the Static saved for last. Everything it passes goes quiet, and if it reaches the portal, so does the Last Pixel.', hp: 2000, speed: 6, gold: 600, dmg: 20, armor: 6, boss: true, jam: 2.5 },
 };
 
 export const isBoss = (type: EnemyType) => !!ENEMIES[type].boss;

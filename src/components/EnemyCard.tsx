@@ -100,7 +100,10 @@ export function EnemyCard({ game, scale }: { game: Game; scale: number }) {
         <div><dt><PiSneakerMoveFill /> Speed</dt><dd>{speedLabel(def.speed)}</dd></div>
         <div><dt><PiShieldFill /> Armor</dt><dd>{e.armor || 'None'}</dd></div>
         <div><dt><PiCoinsFill /> Bounty</dt><dd>{e.gold}</dd></div>
-        <div><dt><PiHeartBreakFill /> Leak</dt><dd className="red">-{e.dmg} {e.dmg === 1 ? 'life' : 'lives'}</dd></div>
+        <div>
+          <dt><PiHeartBreakFill /> Leak</dt>
+          <dd className="red">{def.boss ? 'Every life' : `-${e.dmg} ${e.dmg === 1 ? 'life' : 'lives'}`}</dd>
+        </div>
       </dl>
       {abil.length > 0 && (
         <ul className="ec-list">

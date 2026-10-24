@@ -80,12 +80,12 @@ Placeables go on the road itself, where towers cannot, and wear out with use.
 
 ## Perks
 
-One-off upgrades that last for the rest of the round.
+One-off upgrades that last for the rest of the campaign: buy one and it carries into every round after. A new campaign starts with none.
 
 | Perk | Effect | Unlocks |
 | --- | --- | :-: |
 | **Hollow Points** | Every tower deals 15% more damage. | Round 1 |
-| **Plating** | The portal gains 5 lives, and 5 more maximum. | Round 1 |
+| **Plating** | The portal gains 5 lives, and 5 more maximum every round. | Round 1 |
 | **Salvage** | Towers sell back for 90% instead of 70%. | Round 1 |
 | **Interest** | Each wave cleared pays 10% of your unspent gold, up to 60. | Round 2 |
 | **Overclock** | Every tower attacks 15% faster. | Round 3 |
@@ -103,8 +103,8 @@ One-off upgrades that last for the rest of the round.
 | **Wisp** | A flickering spirit that cold cannot touch. |
 | **Mender** | Heals the horde around it. Kill it first. |
 | **Glitch** | Skips frames, blinking forward through your lines. |
-| **Colossus** | Boss. Arrives every 10 waves. |
-| **The Eraser** | Final boss. Every tower it passes goes silent. |
+| **Colossus** | Boss. Arrives every 10 waves. If it reaches the portal, the run is over. |
+| **The Eraser** | Final boss. Every tower it passes goes silent, and if it reaches the portal, the run is over. |
 
 ## Controls
 
